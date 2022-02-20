@@ -13,7 +13,7 @@ $ which git
 ````
 
 
-If you do, download the repository, run the `compile` script and the `dice` executable will be created in the `build` folder. From here you can move it anywhere you wish on your system.
+If you do, download the repository, run the `compile` script and the `dice` executable will be created in the `build` folder. From here you can move it anywhere it is convenient for you.
 
 ```bash
 git clone https://github.com/AlexFilip/DnDDiceRoller.git
