@@ -19,196 +19,180 @@
 #include "common_operations.cpp"
 
 struct position {
-    int x;
-    int y;
+    int X;
+    int Y;
 };
 
-position current_position() {
+position CurrentPosition() {
     position result = {};
 
-    getyx(stdscr, result.y, result.x);
+    getyx(stdscr, result.Y, result.X);
 
     return result;
 }
 
-position window_size() {
+position WindowSize() {
     position result = {};
 
-    getmaxyx(stdscr, result.y, result.x);
+    getmaxyx(stdscr, result.Y, result.X);
 
     return result;
 }
 
-void move_cursor(position pos) {
-    move(pos.y, pos.x);
+void MoveCursor(position Position) {
+    move(Position.Y, Position.X);
 }
 
-void debug_print(char const* format, ...) {
-    position start_pos = current_position();
-    position win_size = window_size();
+void DebugPrint(char const* format, ...) {
+    position StartPos = CurrentPosition();
+    position win_size = WindowSize();
 
-    move(win_size.y - 1, 0);
+    move(win_size.Y - 1, 0);
 
-    char buffer[4096];
+    char Buffer[4096];
 
     va_list args;
     va_start(args, format);
 
-    vsnprintf(buffer, ArrayLength(buffer), format, args);
+    vsnprintf(Buffer, ArrayLength(Buffer), format, args);
 
     va_end(args);
 
     wclrtoeol(stdscr);
-    wprintw(stdscr, buffer);
+    wprintw(stdscr, Buffer);
 
-    move_cursor(start_pos);
+    MoveCursor(StartPos);
 }
 
 char const prompt[] = "> ";
 
 int main() {
 
-    char buffer[100];
+    char Buffer[100];
     srand(time(NULL));
 
-    char const* DebugStrings[] = {
-        "d20",
-        "2d12",
-        "8d80",
-        "d69",
-        "d420"
-    };
-
-    int DebugStringPos = 0;
-
-    dynamic_array<string> line_buffer = {};
-    int line_buffer_loc = 0;
-
-    for(int DebugStringIndex = 0; DebugStringIndex < DebugStringPos; ++DebugStringIndex) {
-        string heap_string = CopyOnHeap(StringFromC(DebugStrings[DebugStringIndex]));
-        Append(&line_buffer, heap_string);
-    }
+    dynamic_array<string> LineBuffer = {};
+    int LineBufferPosition = 0;
 
     initscr();
     raw();
     keypad(stdscr, TRUE);
     noecho();
 
-    int buffer_index = 0;
+    int BufferIndex = 0;
 
     for(;;) {
         move(0, 0);
         addstr(prompt);
         refresh();
 
-        buffer_index = 0;
-        memset(buffer, 0, ArrayLength(buffer));
-        line_buffer_loc = 0;
+        BufferIndex = 0;
+        memset(Buffer, 0, ArrayLength(Buffer));
+        LineBufferPosition = 0;
 
-        bool typed_first_letter = false;
+        bool TypedFirstLetter = false;
         for(;;) {
-            int c = getch();
+            int Char = getch();
 
-            if(!typed_first_letter) {
+            if(!TypedFirstLetter) {
                 wclrtoeol(stdscr);
-                typed_first_letter = true;
+                TypedFirstLetter = true;
             }
 
-            if(isprint(c)) {
-                if(buffer_index < StringLength(buffer)) {
-                    char next_letter = (char) c;
-                    int start_buffer_index = buffer_index;
-                    int cur_index = start_buffer_index;
-                    while(cur_index < StringLength(buffer) && next_letter != 0) {
-                        char temp = buffer[cur_index];
-                        buffer[cur_index] = next_letter;
-                        next_letter = temp;
-                        ++cur_index;
+            if(isprint(Char)) {
+                if(BufferIndex < StringLength(Buffer)) {
+                    char NextLetter = (char) Char;
+                    int StartBufferIndex = BufferIndex;
+                    int CurrentIndex = StartBufferIndex;
+                    while(CurrentIndex < StringLength(Buffer) && NextLetter != 0) {
+                        char temp = Buffer[CurrentIndex];
+                        Buffer[CurrentIndex] = NextLetter;
+                        NextLetter = temp;
+                        ++CurrentIndex;
                     }
-                    ++buffer_index;
+                    ++BufferIndex;
 
-                    position start_pos = current_position();
-                    cur_index = start_buffer_index;
-                    while(cur_index < StringLength(buffer) && buffer[cur_index] != 0) {
-                        addch(buffer[cur_index]);
-                        cur_index++;
+                    position StartPos = CurrentPosition();
+                    CurrentIndex = StartBufferIndex;
+                    while(CurrentIndex < StringLength(Buffer) && Buffer[CurrentIndex] != 0) {
+                        addch(Buffer[CurrentIndex]);
+                        CurrentIndex++;
                     }
 
-                    ++start_pos.x;
-                    move_cursor(start_pos);
+                    ++StartPos.X;
+                    MoveCursor(StartPos);
                     refresh();
                 }
             } else {
-                if(c == '\n') {
+                if(Char == '\n') {
                     wclrtobot(stdscr);
-                    position current_pos = current_position();
-                    move(current_pos.y + 1, 0);
-                    buffer_index = 0;
+                    position CurrentPos = CurrentPosition();
+                    move(CurrentPos.Y + 1, 0);
+                    BufferIndex = 0;
 
-                    // debug_print("Command is %s\n", buffer);
+                    // DebugPrint("Command is %s\n", Buffer);
 
-                    string heap_string = CopyOnHeap(StringFromC(buffer));
-                    Append(&line_buffer, heap_string);
+                    string HeapString = CopyOnHeap(StringFromC(Buffer));
+                    Append(&LineBuffer, HeapString);
 
                     break;
-                } else if(c == KEY_UP) {
-                    if(line_buffer_loc >= 0 && line_buffer_loc < line_buffer.Length) {
-                        ++line_buffer_loc;
-                        string str = line_buffer.At(line_buffer.Length - line_buffer_loc);
-                        // debug_print("Key up. buffer_pos = %d, str length = %d", buffer_index, str.Length);
-                        CopyInto(str, buffer);
+                } else if(Char == KEY_UP) {
+                    if(LineBufferPosition >= 0 && LineBufferPosition < LineBuffer.Length) {
+                        ++LineBufferPosition;
+                        string PrevString = LineBuffer.At(LineBuffer.Length - LineBufferPosition);
+                        // DebugPrint("Key up. buffer_pos = %d, PrevString length = %d", BufferIndex, PrevString.Length);
+                        CopyInto(PrevString, Buffer);
 
                         // redraw line
                         move(0, StringLength(prompt));
                         wclrtoeol(stdscr);
-                        addstr(buffer);
+                        addstr(Buffer);
 
                         refresh();
 
-                        buffer[str.Length] = '\0';
-                        buffer_index = str.Length;
+                        Buffer[PrevString.Length] = '\0';
+                        BufferIndex = PrevString.Length;
                     }
-                } else if(c == KEY_DOWN) {
-                    if(line_buffer_loc > 0 && line_buffer_loc <= line_buffer.Length) {
-                        --line_buffer_loc;
-                        string str = line_buffer.At(line_buffer.Length - line_buffer_loc);
-                        // debug_print("Key down. buffer index = %d, str length = %d", buffer_index, str.Length);
-                        CopyInto(str, buffer);
+                } else if(Char == KEY_DOWN) {
+                    if(LineBufferPosition > 0 && LineBufferPosition <= LineBuffer.Length) {
+                        --LineBufferPosition;
+                        string NextString = LineBuffer.At(LineBuffer.Length - LineBufferPosition);
+                        // DebugPrint("Key down. Buffer index = %d, NextString length = %d", BufferIndex, NextString.Length);
+                        CopyInto(NextString, Buffer);
 
                         // redraw line
                         move(0, StringLength(prompt));
                         wclrtoeol(stdscr);
-                        addstr(buffer);
+                        addstr(Buffer);
 
                         refresh();
 
-                        buffer[str.Length] = '\0';
-                        buffer_index = str.Length;
+                        Buffer[NextString.Length] = '\0';
+                        BufferIndex = NextString.Length;
                     }
-                } else if(c == KEY_LEFT) {
-                    if(buffer_index > 0) {
-                        --buffer_index;
-                        position pos = current_position();
-                        --pos.x;
-                        move_cursor(pos);
+                } else if(Char == KEY_LEFT) {
+                    if(BufferIndex > 0) {
+                        --BufferIndex;
+                        position Cursor = CurrentPosition();
+                        --Cursor.X;
+                        MoveCursor(Cursor);
                     }
-                } else if(c == KEY_RIGHT) {
-                    if(buffer[buffer_index] != 0 && buffer_index < StringLength(buffer)) {
-                        ++buffer_index;
-                        position pos = current_position();
-                        ++pos.x;
-                        move_cursor(pos);
+                } else if(Char == KEY_RIGHT) {
+                    if(Buffer[BufferIndex] != 0 && BufferIndex < StringLength(Buffer)) {
+                        ++BufferIndex;
+                        position Position = CurrentPosition();
+                        ++Position.X;
+                        MoveCursor(Position);
                     }
-                } else if(c == 127 || c == KEY_BACKSPACE || c == KEY_DC) {
-                    if(buffer_index > 0) {
-                        --buffer_index;
-                        int i;
-                        for(i = buffer_index; i < StringLength(buffer) && buffer[i] != 0; i++) {
-                            buffer[i] = buffer[i + 1];
+                } else if(Char == 127 || Char == KEY_BACKSPACE || Char == KEY_DC) {
+                    if(BufferIndex > 0) {
+                        --BufferIndex;
+                        for(int Index = BufferIndex; Index < StringLength(Buffer) && Buffer[Index] != 0; Index++) {
+                            Buffer[Index] = Buffer[Index + 1];
                         }
-                        position cur = current_position();
-                        cur.x -= 1;
-                        move_cursor(cur);
+                        position Cursor = CurrentPosition();
+                        --Cursor.X;
+                        MoveCursor(Cursor);
                         wdelch(stdscr);
                     }
                 }
@@ -216,60 +200,57 @@ int main() {
             }
         }
 
-        char* text = buffer;
+        char* Text = Buffer;
 
-        if(strcmp(text, "") != 0) {
+        if(strcmp(Text, "") != 0) {
             // Parse string
-            if(strcmp(text, "quit") == 0 || strcmp(text, "exit") == 0) {
+            if(strcmp(Text, "quit") == 0 || strcmp(Text, "exit") == 0) {
                 break;
             }
 
-            while(isspace(*text)) {
-                text++;
+            while(IsWhitespace(*Text)) {
+                Text++;
             }
 
             // read num
-            int num_dice = atoi(text);
-            if(num_dice == 0) {
-                num_dice = 1;
+            int NumDice = atoi(Text);
+            if(NumDice == 0) {
+                NumDice = 1;
             }
 
-            if(*text == '-' || *text == '+') {
-                text++;
+            if(*Text == '-' || *Text == '+') {
+                Text++;
             }
 
-            while(isdigit(*text)) {
-                text++;
+            while(IsNumber(*Text)) {
+                Text++;
             }
 
-            if(*text != 'd' && *text != 'D') {
+            if(*Text != 'd' && *Text != 'D') {
                 addstr("Unexpected format\n");
-                refresh();
             } else {
-                text++;
-                int num_sides = atoi(text);
+                Text++;
+                int NumSides = atoi(Text);
 
-                if(num_sides <= 0) {
+                if(NumSides <= 0) {
                     addstr("Cannot have die with zero or fewer sides or need num sides\n");
                     refresh();
                 } else {
-                    int total = 0;
-                    for(int i = 0; i < num_dice; ++i) {
-                        int num = rand() % num_sides + 1;
-                        total += num;
+                    int Total = 0;
+                    for(int Index = 0; Index < NumDice; ++Index) {
+                        int Num = rand() % NumSides + 1;
+                        Total += Num;
 
-                        printw("%d\n", num);
-                        refresh();
+                        printw("%d\n", Num);
                     }
 
-                    if(num_dice > 1) {
-                        printw("\nTOTAL: %d\n", total);
+                    if(NumDice > 1) {
+                        printw("\nTotal: %d\n", Total);
                     }
                 } 
             }
         }
 
-        move(0, 0);
         refresh();
     }
 
