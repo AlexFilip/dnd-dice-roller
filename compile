@@ -1,0 +1,10 @@
+#!/bin/zsh
+
+if ! [[ -d build ]]; then
+    mkdir build
+fi
+
+FILENAME=main
+# FILENAME=template
+
+clang++ --std=c++17 -lncurses $FILENAME.cpp -o build/$FILENAME && build/$FILENAME
