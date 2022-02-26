@@ -18,12 +18,21 @@
 #include "basic_types.h"
 #include "common_operations.cpp"
 
+#define UpArrow 259
+#define DownArrow 258
+#define LeftArrow 260
+#define RightArrow 261
+
+#define Backspace 263
+#define Delete 330
+
 struct position {
     int X;
     int Y;
 };
 
-position CurrentPosition() {
+internal position
+CurrentPosition() {
     position result = {};
 
     getyx(stdscr, result.Y, result.X);
@@ -31,7 +40,8 @@ position CurrentPosition() {
     return result;
 }
 
-position WindowSize() {
+internal position
+WindowSize() {
     position result = {};
 
     getmaxyx(stdscr, result.Y, result.X);
@@ -39,11 +49,13 @@ position WindowSize() {
     return result;
 }
 
-void MoveCursor(position Position) {
+internal void
+MoveCursor(position Position) {
     move(Position.Y, Position.X);
 }
 
-void DebugPrint(char const* format, ...) {
+internal void
+DebugPrint(char const* format, ...) {
     position StartPos = CurrentPosition();
     position win_size = WindowSize();
 
@@ -93,6 +105,7 @@ int main() {
         bool TypedFirstLetter = false;
         for(;;) {
             int Char = getch();
+            // DebugPrint("Char is %d", Char);
 
             if(!TypedFirstLetter) {
                 wclrtoeol(stdscr);
@@ -227,25 +240,101 @@ int main() {
             }
 
             if(*Text != 'd' && *Text != 'D') {
-                addstr("Unexpected format\n");
+                if(NumDice > 0) {
+                    addstr("Unexpected value. Expected to find d or D after number of dice\n");
+                } else {
+                    addstr("Unexpected value. Expected to find number, d or D\n");
+                }
+            } else if(!IsNumber(Text[1])) {
+                printw("Expected number after '%c'", *Text);
             } else {
-                Text++;
+                ++Text;
                 int NumSides = atoi(Text);
+
+                int NumDigits = 0;
+                while(IsNumber(*Text)) {
+                    ++NumDigits;
+                    ++Text;
+                }
 
                 if(NumSides <= 0) {
                     addstr("Cannot have die with zero or fewer sides or need num sides\n");
                     refresh();
                 } else {
-                    int Total = 0;
-                    for(int Index = 0; Index < NumDice; ++Index) {
-                        int Num = rand() % NumSides + 1;
-                        Total += Num;
+                    position WinSize = WindowSize();
 
-                        printw("%d\n", Num);
+                    // 5 = 1 prompt line + 3 lines for stats + 1 line before
+                    int NumUsableLines = WinSize.Y - 5;
+
+                    int NumPerLine = 1;
+
+                    // TEMPORARY
+                    // TODO: Do the calculus problem that will give this answer, I'm too sleep-deprived to do it now.
+                    while((NumDice / NumPerLine) > NumUsableLines) {
+                        ++NumPerLine;
                     }
 
                     if(NumDice > 1) {
-                        printw("\nTotal: %d\n", Total);
+                        position CurPos = CurrentPosition();
+                        CurPos.Y += 4;
+                        MoveCursor(CurPos);
+                    }
+
+                    int Total = 0;
+                    int Max = 0;
+                    int Min = 0x7FFFFFFF;
+                    int Num;
+
+                    auto GenerateNum = [&]() {
+                        Num = rand() % NumSides + 1;
+                        Total += Num;
+
+                        if(Num > Max) {
+                            Max = Num;
+                        }
+
+                        if(Num < Min) {
+                            Min = Num;
+                        }
+                    };
+
+                    int NumWrittenOnLine = 0;
+                    int NumLinesWritten = 0;
+                    int Index = 0;
+
+                    char FormatString[100] = "%";
+                    snprintf(FormatString + 1, StringLength(FormatString) - 1, "%dd", NumDigits);
+
+                    for(; Index < NumDice && NumLinesWritten < NumUsableLines; ++Index) {
+                        GenerateNum();
+
+                        printw(FormatString, Num);
+
+                        ++NumWrittenOnLine;
+                        if(NumWrittenOnLine >= NumPerLine || (NumWrittenOnLine * NumDigits) > WinSize.X) {
+                            NumWrittenOnLine = 0;
+                            ++NumLinesWritten;
+                            printw("\n");
+                        } else {
+                            ++NumWrittenOnLine;
+                            printw(" ");
+                        }
+                    }
+
+                    // out of lines we can write on but continue generating numbers
+                    for(; Index < NumDice; ++Index) {
+                        GenerateNum();
+                    }
+
+                    if(NumDice > 1) {
+                        position NewPos = {};
+                        NewPos.X = 0;
+                        NewPos.Y = 1;
+                        MoveCursor(NewPos);
+                        printw("Total: %d\n"
+                               "Max: %d\n"
+                               "Min %d\n\n",
+                               Total, Max, Min);
                     }
                 } 
             }
