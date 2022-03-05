@@ -79,7 +79,6 @@ DebugPrint(char const* format, ...) {
 char const prompt[] = "> ";
 
 int main() {
-
     char Buffer[100];
     srand(time(NULL));
 
@@ -92,7 +91,6 @@ int main() {
     noecho();
 
     int BufferIndex = 0;
-
     for(;;) {
         move(0, 0);
         addstr(prompt);
@@ -102,14 +100,14 @@ int main() {
         memset(Buffer, 0, ArrayLength(Buffer));
         LineBufferPosition = 0;
 
-        bool TypedFirstLetter = false;
+        bool TypedFirstKey = false;
         for(;;) {
             int Char = getch();
             // DebugPrint("Char is %d", Char);
 
-            if(!TypedFirstLetter) {
+            if(!TypedFirstKey) {
                 wclrtoeol(stdscr);
-                TypedFirstLetter = true;
+                TypedFirstKey = true;
             }
 
             if(isprint(Char)) {
@@ -123,6 +121,7 @@ int main() {
                         NextLetter = temp;
                         ++CurrentIndex;
                     }
+                    Buffer[CurrentIndex] = '\0';
                     ++BufferIndex;
 
                     position StartPos = CurrentPosition();
@@ -134,54 +133,63 @@ int main() {
 
                     ++StartPos.X;
                     MoveCursor(StartPos);
-                    refresh();
                 }
             } else {
                 if(Char == '\n') {
-                    wclrtobot(stdscr);
-                    position CurrentPos = CurrentPosition();
-                    move(CurrentPos.Y + 1, 0);
-                    BufferIndex = 0;
+                    if(BufferIndex != 0) {
+                        wclrtobot(stdscr);
+                        position CurrentPos = CurrentPosition();
+                        move(CurrentPos.Y + 1, 0);
+                        BufferIndex = 0;
 
-                    // DebugPrint("Command is %s\n", Buffer);
+                        // DebugPrint("Command is %s\n", Buffer);
 
-                    string HeapString = CopyOnHeap(StringFromC(Buffer));
-                    Append(&LineBuffer, HeapString);
+                        string HeapString = CopyOnHeap(StringFromC(Buffer));
+                        Append(&LineBuffer, HeapString);
 
-                    break;
+                        break;
+                    }
                 } else if(Char == KEY_UP) {
                     if(LineBufferPosition >= 0 && LineBufferPosition < LineBuffer.Length) {
+                        if(LineBufferPosition == 0) {
+                            // line currently being typed
+                        }
+
                         ++LineBufferPosition;
                         string PrevString = LineBuffer.At(LineBuffer.Length - LineBufferPosition);
                         // DebugPrint("Key up. buffer_pos = %d, PrevString length = %d", BufferIndex, PrevString.Length);
                         CopyInto(PrevString, Buffer);
 
+                        Buffer[PrevString.Length] = '\0';
+                        BufferIndex = PrevString.Length;
+
                         // redraw line
                         move(0, StringLength(prompt));
                         wclrtoeol(stdscr);
                         addstr(Buffer);
-
-                        refresh();
-
-                        Buffer[PrevString.Length] = '\0';
-                        BufferIndex = PrevString.Length;
                     }
                 } else if(Char == KEY_DOWN) {
-                    if(LineBufferPosition > 0 && LineBufferPosition <= LineBuffer.Length) {
-                        --LineBufferPosition;
-                        string NextString = LineBuffer.At(LineBuffer.Length - LineBufferPosition);
+                    if(LineBufferPosition >= 0 && LineBufferPosition <= LineBuffer.Length) {
+                        string NextString = {};
+
+                        if(LineBufferPosition == 0) {
+                            // TODO: Copy working line into buffer
+                        } else {
+                            --LineBufferPosition;
+                            NextString = LineBuffer.At(LineBuffer.Length - LineBufferPosition);
+                        }
+
                         // DebugPrint("Key down. Buffer index = %d, NextString length = %d", BufferIndex, NextString.Length);
                         CopyInto(NextString, Buffer);
 
+                        Buffer[NextString.Length] = '\0';
+                        BufferIndex = NextString.Length;
+
                         // redraw line
                         move(0, StringLength(prompt));
                         wclrtoeol(stdscr);
                         addstr(Buffer);
 
-                        refresh();
-
-                        Buffer[NextString.Length] = '\0';
-                        BufferIndex = NextString.Length;
                     }
                 } else if(Char == KEY_LEFT) {
                     if(BufferIndex > 0) {
@@ -211,6 +219,8 @@ int main() {
                 }
                 // TODO: Check for control and special characters
             }
+
+            refresh();
         }
 
         char* Text = Buffer;
@@ -339,8 +349,6 @@ int main() {
                 } 
             }
         }
-
-        refresh();
     }
 
     endwin();

@@ -8,9 +8,6 @@
 #ifndef BASIC_TYPES_H
 #define BASIC_TYPES_H
 
-// This is meant to be used only by the metaprogram
-#define introspect(...)
-
 // --- 
 
 typedef int8_t  s8;

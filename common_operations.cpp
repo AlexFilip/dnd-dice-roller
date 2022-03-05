@@ -129,13 +129,13 @@ ArrayOf() {
     return Result;
 }
 
-template<class type1, class ...type> internal array<type1> 
+template<class type1, class ...type> internal inline array<type1> 
 ArrayOf(type1 Val1, type ... Vals) {
     type1 Args[] = { Val1, static_cast<type1>(Vals)... };
     array<type1> Result = AllocateArray<type1>(sizeof...(type) + 1);
 
     for(int Index = 0; Index < Result.Length; ++Index) {
-        Result.At(Index) = Args[Index];
+        Result.Contents[Index] = Args[Index];
     }
 
     return Result;

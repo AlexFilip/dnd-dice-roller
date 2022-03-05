@@ -58,12 +58,6 @@ template<class type>
 using RmRef = typename _impl::RmRef<type>::type;
 #define array_element_type(Array) RmRef<decltype(Array[0])>
 
-// #define SubscriptOperator(type) \
-//     inline \
-//     type& operator[](s64 Position) { \
-//         return Contents[Position]; \
-//     }
-
 #define SubscriptOperator(type) \
     inline \
     type& At(s64 Position) const { \
