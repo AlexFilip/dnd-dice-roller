@@ -18,6 +18,12 @@
 #include "basic_types.h"
 #include "common_operations.cpp"
 
+/*
+ * TODO:
+ *  - Full parser to allow for rolling multiple (space separated) dice
+ *  - If the user types something and moves up or down in the line buffer, save the working line into the buffer and copy back when they go past the end of the line buffer
+ */
+
 #define UpArrow 259
 #define DownArrow 258
 #define LeftArrow 260
