@@ -413,7 +413,7 @@ int main() {
 
                 // This weird way of printing the dice and checking that the count is 1 two times is here
                 // because using "%dd%d" as a format string leads to weird output.
-                if(CurrentToken.Dice.Count == 1) {
+                if(CurrentToken.Dice.Count != 1) {
                     printw("%d", CurrentToken.Dice.Count);
                 }
                 printw("d%d:\n", CurrentToken.Dice.NumSides);
@@ -423,7 +423,7 @@ int main() {
                 } else {
                     printw("  Total: %d\n"
                            "  Max: %d\n"
-                           "  Min %d\n\n",
+                           "  Min: %d\n\n",
                            Total, Max, Min);
                 }
 
