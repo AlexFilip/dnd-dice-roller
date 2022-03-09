@@ -20,7 +20,9 @@
 
 /*
  * TODO:
- *  - Full parser to allow for rolling multiple (space separated) dice
+ *  - Check format for die rolls, error message if unrecognized error
+ *  - adding and removing items
+ *  - Allow GetToken to treat individual words as strings even if it is not a token.
  *  - If the user types something and moves up or down in the line buffer, save the working line into the buffer and copy back when they go past the end of the line buffer
  */
 
@@ -82,6 +84,139 @@ DebugPrint(char const* format, ...) {
     MoveCursor(StartPos);
 }
 
+enum token_type {
+    TokenTypeEndOfStream,
+    TokenTypeError,
+    TokenTypeQuit,
+    TokenTypeAddItem,
+    TokenTypeRemoveItem,
+    TokenTypeDice,
+    TokenTypeNumber,
+    TokenTypeString,
+};
+
+struct token {
+    token_type Type;
+
+    union {
+        string ErrorMessage;
+        struct {
+            int Count;
+            int NumSides;
+        } Dice;
+        int Number;
+    };
+};
+
+struct tokenizer {
+    char* At;
+    char* End;
+};
+
+token GetToken(tokenizer* Tokenizer) {
+    token Result = {};
+
+    // Skip whitespace. last character assumed to be zero
+    while(IsWhitespace(Tokenizer->At[0])) {
+        ++Tokenizer->At;
+    }
+
+    // string ErrorMessage = {};
+    if(Tokenizer->At >= Tokenizer->End) {
+        Result.Type = TokenTypeEndOfStream;
+    } else {
+        char Char = Tokenizer->At[0];
+        int TokenEndIndex = 0;
+
+        if(Char == '"') {
+            do {
+                ++TokenEndIndex;
+                Char = Tokenizer->At[TokenEndIndex];
+            } while(Tokenizer->At + TokenEndIndex < Tokenizer->End && Char != '"');
+            ++TokenEndIndex;
+
+            // INCOMPLETE
+            // Token is string
+            Result.Type = TokenTypeString;
+        } else {
+            while(IsNumber(Char) || IsLetter(Char)) {
+                ++TokenEndIndex;
+                Char = Tokenizer->At[TokenEndIndex];
+            }
+        }
+
+        if(TokenEndIndex > 0) {
+            string WordStr = StringWithLength(Tokenizer->At, TokenEndIndex);
+            if(StringsEqual(WordStr, String("add"))) {
+                Result.Type = TokenTypeAddItem;
+            } else if(StringsEqual(WordStr, String("remove"))) {
+                Result.Type = TokenTypeRemoveItem;
+            } else if(StringsEqual(WordStr, String("quit")) || StringsEqual(WordStr, String("exit"))) {
+                Result.Type = TokenTypeQuit;
+            } else {
+                int NumDice = 1;
+                int DiceIndex = 0;
+                while(IsNumber(Tokenizer->At[DiceIndex])) {
+                    ++DiceIndex;
+                }
+
+                if(DiceIndex > 0) {
+                    string NumDiceString = StringWithLength(Tokenizer->At, DiceIndex);
+                    NumDice = StringToIntUnchecked(NumDiceString);
+                }
+
+                if(NumDice == 0) {
+                    Result.ErrorMessage = CopyOnHeap(String("Num dice must be greater than zero"));
+                    Result.Type = TokenTypeError;
+                } else if(DiceIndex == TokenEndIndex) {
+                    Result.Number = NumDice;
+                    Result.Type = TokenTypeNumber;
+                } else if((Tokenizer->At[DiceIndex] | 0x20) == 'd' /* Case-insensitive comparison */) {
+                    ++DiceIndex;
+                    int StartDiceIndex = DiceIndex;
+                    while(IsNumber(Tokenizer->At[DiceIndex])) {
+                        ++DiceIndex;
+                    }
+
+                    if(DiceIndex == StartDiceIndex) {
+                        Result.ErrorMessage = CopyOnHeap(String("You must provide the number of sides a dice has."));
+                        Result.Type = TokenTypeError;
+                    } else if(DiceIndex < TokenEndIndex) {
+                        Result.ErrorMessage = CopyOnHeap(String("Trailing characters after number of sides."));
+                        Result.Type = TokenTypeError;
+                    } else {
+                        string NumSidesString = StringWithLength(Tokenizer->At + StartDiceIndex, TokenEndIndex - StartDiceIndex);
+                        int NumSides = StringToIntUnchecked(NumSidesString);
+                        
+                        if(NumSides == 0) {
+                            Result.ErrorMessage = CopyOnHeap(String("Num sides must be greater than zero"));
+                            Result.Type = TokenTypeError;
+                        } else {
+                            Result.Dice.Count    = NumDice;
+                            Result.Dice.NumSides = NumSides;
+                            Result.Type = TokenTypeDice;
+                        }
+                    }
+                } else {
+                    string ErrStart = String("Unrecognized token: ");
+                    AllocateString(ErrStart.Length + TokenEndIndex);
+                    StringConcat(ErrStart, StringWithLength(Tokenizer->At, TokenEndIndex), Result.ErrorMessage);
+                    Result.Type = TokenTypeError;
+                }
+            }
+            Tokenizer->At += TokenEndIndex;
+        } else {
+            Result.ErrorMessage = CopyOnHeap(String("Unknown character '-'"));
+            Result.ErrorMessage.Contents[Result.ErrorMessage.Length - 2] = Char;
+            Result.Type = TokenTypeError;
+            Tokenizer->At += 1;
+        }
+
+    }
+
+    return Result;
+}
+
 char const prompt[] = "> ";
 
 int main() {
@@ -90,19 +225,21 @@ int main() {
 
     dynamic_array<string> LineBuffer = {};
     int LineBufferPosition = 0;
+    bool IsRunning = false;
 
     initscr();
     raw();
     keypad(stdscr, TRUE);
     noecho();
 
-    int BufferIndex = 0;
-    for(;;) {
+    IsRunning = true;
+    while(IsRunning) {
         move(0, 0);
         addstr(prompt);
         refresh();
 
-        BufferIndex = 0;
+        int BufferIndex = 0;
+        int BufferLength = 0;
         memset(Buffer, 0, ArrayLength(Buffer));
         LineBufferPosition = 0;
 
@@ -117,7 +254,7 @@ int main() {
             }
 
             if(isprint(Char)) {
-                if(BufferIndex < StringLength(Buffer)) {
+                if(BufferLength < StringLength(Buffer)) {
                     char NextLetter = (char) Char;
                     int StartBufferIndex = BufferIndex;
                     int CurrentIndex = StartBufferIndex;
@@ -129,6 +266,7 @@ int main() {
                     }
                     Buffer[CurrentIndex] = '\0';
                     ++BufferIndex;
+                    ++BufferLength;
 
                     position StartPos = CurrentPosition();
                     CurrentIndex = StartBufferIndex;
@@ -142,11 +280,10 @@ int main() {
                 }
             } else {
                 if(Char == '\n') {
-                    if(BufferIndex != 0) {
+                    if(BufferLength != 0) {
                         wclrtobot(stdscr);
                         position CurrentPos = CurrentPosition();
                         move(CurrentPos.Y + 1, 0);
-                        BufferIndex = 0;
 
                         // DebugPrint("Command is %s\n", Buffer);
 
@@ -163,11 +300,11 @@ int main() {
 
                         ++LineBufferPosition;
                         string PrevString = LineBuffer.At(LineBuffer.Length - LineBufferPosition);
-                        // DebugPrint("Key up. buffer_pos = %d, PrevString length = %d", BufferIndex, PrevString.Length);
                         CopyInto(PrevString, Buffer);
 
                         Buffer[PrevString.Length] = '\0';
                         BufferIndex = PrevString.Length;
+                        BufferLength = PrevString.Length;
 
                         // redraw line
                         move(0, StringLength(prompt));
@@ -185,11 +322,11 @@ int main() {
                             NextString = LineBuffer.At(LineBuffer.Length - LineBufferPosition);
                         }
 
-                        // DebugPrint("Key down. Buffer index = %d, NextString length = %d", BufferIndex, NextString.Length);
                         CopyInto(NextString, Buffer);
 
                         Buffer[NextString.Length] = '\0';
                         BufferIndex = NextString.Length;
+                        BufferLength = NextString.Length;
 
                         // redraw line
                         move(0, StringLength(prompt));
@@ -205,7 +342,7 @@ int main() {
                         MoveCursor(Cursor);
                     }
                 } else if(Char == KEY_RIGHT) {
-                    if(Buffer[BufferIndex] != 0 && BufferIndex < StringLength(Buffer)) {
+                    if(Buffer[BufferIndex] != 0 && BufferIndex < BufferLength) {
                         ++BufferIndex;
                         position Position = CurrentPosition();
                         ++Position.X;
@@ -214,12 +351,13 @@ int main() {
                 } else if(Char == 127 || Char == KEY_BACKSPACE || Char == KEY_DC) {
                     if(BufferIndex > 0) {
                         --BufferIndex;
-                        for(int Index = BufferIndex; Index < StringLength(Buffer) && Buffer[Index] != 0; Index++) {
+                        for(int Index = BufferIndex; Index < StringLength(Buffer) && Buffer[Index] != 0; ++Index) {
                             Buffer[Index] = Buffer[Index + 1];
                         }
                         position Cursor = CurrentPosition();
                         --Cursor.X;
                         MoveCursor(Cursor);
+                        // this function takes care of all the on screen deleting on a line
                         wdelch(stdscr);
                     }
                 }
@@ -231,129 +369,74 @@ int main() {
 
         char* Text = Buffer;
 
-        if(strcmp(Text, "") != 0) {
-            // Parse string
-            if(strcmp(Text, "quit") == 0 || strcmp(Text, "exit") == 0) {
-                break;
-            }
+        tokenizer Tokenizer = {};
+        Tokenizer.At = Buffer;
+        Tokenizer.End = Buffer + BufferLength;
+        *(Tokenizer.End) = '\0';
 
-            while(IsWhitespace(*Text)) {
-                Text++;
-            }
+        bool IsReading = true;
+        while(IsReading) {
+            token CurrentToken = GetToken(&Tokenizer);
 
-            // read num
-            int NumDice = atoi(Text);
-            if(NumDice == 0) {
-                NumDice = 1;
-            }
+            if(CurrentToken.Type == TokenTypeEndOfStream) {
+                IsReading = false;
+            } else if(CurrentToken.Type == TokenTypeAddItem) {
+                token ItemToAddToken = GetToken(&Tokenizer);
+                // TODO: Add item
+                printw("Item adding is incomplete");
+            } else if(CurrentToken.Type == TokenTypeRemoveItem) {
+                token ItemToRemoveToken = GetToken(&Tokenizer);
+                // TODO: Remove item
+                printw("Item removing is incomplete");
+            } else if(CurrentToken.Type == TokenTypeQuit) {
+                IsRunning = false;
+                IsReading = false;
+            } else if(CurrentToken.Type == TokenTypeDice) {
+                // printw("Rolling %d dice with %d sides\n", CurrentToken.Dice.Count, CurrentToken.Dice.NumSides);
+                // TODO: I might want to factor this out into its own function in case I want to add dice as items. Then I can use it later.
+                int Total = 0;
+                int Max = 0;
+                int Min = 0x7FFFFFFF;
+                
+                for(int Index = 0; Index < CurrentToken.Dice.Count; ++Index) {
+                    int Num = rand() % CurrentToken.Dice.NumSides + 1;
+                    Total += Num;
 
-            if(*Text == '-' || *Text == '+') {
-                Text++;
-            }
+                    if(Num > Max) {
+                        Max = Num;
+                    }
 
-            while(IsNumber(*Text)) {
-                Text++;
-            }
-
-            if(*Text != 'd' && *Text != 'D') {
-                if(NumDice > 0) {
-                    addstr("Unexpected value. Expected to find d or D after number of dice\n");
-                } else {
-                    addstr("Unexpected value. Expected to find number, d or D\n");
+                    if(Num < Min) {
+                        Min = Num;
+                    }
                 }
-            } else if(!IsNumber(Text[1])) {
-                printw("Expected number after '%c'", *Text);
-            } else {
-                ++Text;
-                int NumSides = atoi(Text);
 
-                int NumDigits = 0;
-                while(IsNumber(*Text)) {
-                    ++NumDigits;
-                    ++Text;
+                // This weird way of printing the dice and checking that the count is 1 two times is here
+                // because using "%dd%d" as a format string leads to weird output.
+                if(CurrentToken.Dice.Count == 1) {
+                    printw("%d", CurrentToken.Dice.Count);
+                }
+                printw("d%d:\n", CurrentToken.Dice.NumSides);
+
+                if(CurrentToken.Dice.Count == 1) {
+                    printw("  %d\n\n", Total);
+                } else {
+                    printw("  Total: %d\n"
+                           "  Max: %d\n"
+                           "  Min %d\n\n",
+                           Total, Max, Min);
                 }
 
-                if(NumSides <= 0) {
-                    addstr("Cannot have die with zero or fewer sides or need num sides\n");
-                    refresh();
-                } else {
-                    position WinSize = WindowSize();
-
-                    // 5 = 1 prompt line + 3 lines for stats + 1 line before
-                    int NumUsableLines = WinSize.Y - 5;
-
-                    int NumPerLine = 1;
-
-                    // TEMPORARY
-                    // TODO: Do the calculus problem that will give this answer, I'm too sleep-deprived to do it now.
-                    while((NumDice / NumPerLine) > NumUsableLines) {
-                        ++NumPerLine;
-                    }
-
-                    if(NumDice > 1) {
-                        position CurPos = CurrentPosition();
-                        CurPos.Y += 4;
-                        MoveCursor(CurPos);
-                    }
-
-                    int Total = 0;
-                    int Max = 0;
-                    int Min = 0x7FFFFFFF;
-                    int Num;
-
-                    auto GenerateNum = [&]() {
-                        Num = rand() % NumSides + 1;
-                        Total += Num;
-
-                        if(Num > Max) {
-                            Max = Num;
-                        }
-
-                        if(Num < Min) {
-                            Min = Num;
-                        }
-                    };
-
-                    int NumWrittenOnLine = 0;
-                    int NumLinesWritten = 0;
-                    int Index = 0;
-
-                    char FormatString[100] = "%";
-                    snprintf(FormatString + 1, StringLength(FormatString) - 1, "%dd", NumDigits);
-
-                    for(; Index < NumDice && NumLinesWritten < NumUsableLines; ++Index) {
-                        GenerateNum();
-
-                        printw(FormatString, Num);
-
-                        ++NumWrittenOnLine;
-                        if(NumWrittenOnLine >= NumPerLine || (NumWrittenOnLine * NumDigits) > WinSize.X) {
-                            NumWrittenOnLine = 0;
-                            ++NumLinesWritten;
-                            printw("\n");
-                        } else {
-                            ++NumWrittenOnLine;
-                            printw(" ");
-                        }
-                    }
-
-                    // out of lines we can write on but continue generating numbers
-                    for(; Index < NumDice; ++Index) {
-                        GenerateNum();
-                    }
-
-                    if(NumDice > 1) {
-                        position NewPos = {};
-                        NewPos.X = 0;
-                        NewPos.Y = 1;
-                        MoveCursor(NewPos);
-                        printw("Total: %d\n"
-                               "Max: %d\n"
-                               "Min %d\n\n",
-                               Total, Max, Min);
-                    }
-                } 
+            } else if(CurrentToken.Type == TokenTypeNumber) {
+                printw("Error: Cannot start command with number\n");
+            } else if(CurrentToken.Type == TokenTypeString) {
+                printw("Error: Cannot start command with string\n");
+            } else if(CurrentToken.Type == TokenTypeError) {
+                printw("Error: %.*s\n", StringAsArgs(CurrentToken.ErrorMessage));
+                DeallocateString(&CurrentToken.ErrorMessage);
+                IsReading = false;
             }
+            refresh();
         }
     }
 
