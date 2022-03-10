@@ -28,6 +28,9 @@
  *  - adv, dis, sum/total after dice for advantage, disadvantage, total
  *  - labels on dice. ex. 2d20:attack, which will use "attack" instead of 2d20 in the result labels
  *  - comparison operators: >, <, >=, <= which just say true/false or succeeded/failed (ex. 2d12 > 7 will compare the total of 2d12 to 7)
+ *
+ *  Eventually (just for fun)
+ *  - Math expressions that include dice. Ex. "2 * (2d20 + 4) - 3d8 > 7 - 3d6"
  */
 
 #define UpArrow 259
