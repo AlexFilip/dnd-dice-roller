@@ -207,7 +207,7 @@ token GetToken(tokenizer* Tokenizer) {
                     }
                 } else {
                     string ErrStart = String("Unrecognized token: ");
-                    AllocateString(ErrStart.Length + TokenEndIndex);
+                    Result.ErrorMessage = AllocateString(ErrStart.Length + TokenEndIndex);
                     StringConcat(ErrStart, StringWithLength(Tokenizer->At, TokenEndIndex), Result.ErrorMessage);
                     Result.Type = TokenTypeError;
                 }

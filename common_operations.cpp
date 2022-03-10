@@ -326,6 +326,7 @@ StringsEqual(string String1, string String2) {
 internal s64
 StringConcat(string String1, string String2, string Result) {
     s64 ResultIndex = 0;
+
     for(s64 Index1 = 0; Index1 < String1.Length && ResultIndex < Result.Length; ++Index1, ++ResultIndex) {
         Result.At(ResultIndex) = String1.At(Index1);
     }
