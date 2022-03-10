@@ -24,6 +24,10 @@
  *  - adding and removing items
  *  - Allow GetToken to treat individual words as strings even if it is not a token.
  *  - If the user types something and moves up or down in the line buffer, save the working line into the buffer and copy back when they go past the end of the line buffer
+ *
+ *  - adv, dis, sum/total after dice for advantage, disadvantage, total
+ *  - labels on dice. ex. 2d20:attack, which will use "attack" instead of 2d20 in the result labels
+ *  - comparison operators: >, <, >=, <= which just say true/false or succeeded/failed (ex. 2d12 > 7 will compare the total of 2d12 to 7)
  */
 
 #define UpArrow 259
@@ -179,7 +183,7 @@ token GetToken(tokenizer* Tokenizer) {
                     }
 
                     if(DiceIndex == StartDiceIndex) {
-                        Result.ErrorMessage = CopyOnHeap(String("You must provide the number of sides a dice has."));
+                        Result.ErrorMessage = CopyOnHeap(String("You must provide the number of sides a die has."));
                         Result.Type = TokenTypeError;
                     } else if(DiceIndex < TokenEndIndex) {
                         Result.ErrorMessage = CopyOnHeap(String("Trailing characters after number of sides."));
