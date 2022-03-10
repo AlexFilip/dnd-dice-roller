@@ -22,7 +22,7 @@
  * TODO:
  *  - Check format for die rolls, error message if unrecognized error
  *  - adding and removing items
- *  - Allow GetToken to treat individual words as strings even if it is not a token.
+ *  - Allow GetToken to treat individual words as strings even if it is not a valid token.
  *  - If the user types something and moves up or down in the line buffer, save the working line into the buffer and copy back when they go past the end of the line buffer
  *
  *  - adv, dis, sum/total after dice for advantage, disadvantage, total
@@ -92,6 +92,11 @@ DebugPrint(char const* format, ...) {
     MoveCursor(StartPos);
 }
 
+struct dice_collection {
+    int Count;
+    int NumSides;
+};
+
 enum token_type {
     TokenTypeEndOfStream,
     TokenTypeError,
@@ -101,6 +106,7 @@ enum token_type {
     TokenTypeDice,
     TokenTypeNumber,
     TokenTypeString,
+    TokenTypeIdentifier,
 };
 
 struct token {
@@ -108,10 +114,9 @@ struct token {
 
     union {
         string ErrorMessage;
-        struct {
-            int Count;
-            int NumSides;
-        } Dice;
+        dice_collection Dice;
+        string Identifier;
+        string String;
         int Number;
     };
 };
@@ -122,6 +127,8 @@ struct tokenizer {
 };
 
 token GetToken(tokenizer* Tokenizer) {
+    // NOTE: Error messages should be copied onto the heap and strings that are
+    // part of the command should just refer to their places in the buffer.
     token Result = {};
 
     // Skip whitespace. last character assumed to be zero
@@ -136,90 +143,96 @@ token GetToken(tokenizer* Tokenizer) {
         char Char = Tokenizer->At[0];
         int TokenEndIndex = 0;
 
-        if(Char == '"') {
+        if(Char == '"' || Char == '\'') {
             do {
                 ++TokenEndIndex;
-                Char = Tokenizer->At[TokenEndIndex];
-            } while(Tokenizer->At + TokenEndIndex < Tokenizer->End && Char != '"');
-            ++TokenEndIndex;
+            } while(Tokenizer->At + TokenEndIndex < Tokenizer->End && Tokenizer->At[TokenEndIndex] != Char);
 
-            // INCOMPLETE
-            // Token is string
-            Result.Type = TokenTypeString;
+            if(Tokenizer->At[TokenEndIndex] == Char) {
+                Result.String = StringWithLength(Tokenizer->At + 1, TokenEndIndex - 1);
+                Result.Type = TokenTypeString;
+                Tokenizer->At += TokenEndIndex + 1; // +1 to count for second quote
+            } else {
+                Result.ErrorMessage = String("Could not find terminating quote in string");
+                Result.Type = TokenTypeError;
+            }
         } else {
             while(IsNumber(Char) || IsLetter(Char)) {
                 ++TokenEndIndex;
                 Char = Tokenizer->At[TokenEndIndex];
             }
-        }
 
-        if(TokenEndIndex > 0) {
-            string WordStr = StringWithLength(Tokenizer->At, TokenEndIndex);
-            if(StringsEqual(WordStr, String("add"))) {
-                Result.Type = TokenTypeAddItem;
-            } else if(StringsEqual(WordStr, String("remove"))) {
-                Result.Type = TokenTypeRemoveItem;
-            } else if(StringsEqual(WordStr, String("quit")) || StringsEqual(WordStr, String("exit"))) {
-                Result.Type = TokenTypeQuit;
-            } else {
-                int NumDice = 1;
-                int DiceIndex = 0;
-                while(IsNumber(Tokenizer->At[DiceIndex])) {
-                    ++DiceIndex;
-                }
-
-                if(DiceIndex > 0) {
-                    string NumDiceString = StringWithLength(Tokenizer->At, DiceIndex);
-                    NumDice = StringToIntUnchecked(NumDiceString);
-                }
-
-                if(NumDice == 0) {
-                    Result.ErrorMessage = CopyOnHeap(String("Num dice must be greater than zero"));
-                    Result.Type = TokenTypeError;
-                } else if(DiceIndex == TokenEndIndex) {
-                    Result.Number = NumDice;
-                    Result.Type = TokenTypeNumber;
-                } else if((Tokenizer->At[DiceIndex] | 0x20) == 'd' /* Case-insensitive comparison */) {
-                    ++DiceIndex;
-                    int StartDiceIndex = DiceIndex;
+            if(TokenEndIndex > 0) {
+                string WordStr = StringWithLength(Tokenizer->At, TokenEndIndex);
+                if(StringsEqual(WordStr, String("add"))) {
+                    Result.Type = TokenTypeAddItem;
+                } else if(StringsEqual(WordStr, String("remove"))) {
+                    Result.Type = TokenTypeRemoveItem;
+                } else if(StringsEqual(WordStr, String("quit")) || StringsEqual(WordStr, String("exit"))) {
+                    Result.Type = TokenTypeQuit;
+                } else {
+                    int NumDice = 1;
+                    int DiceIndex = 0;
                     while(IsNumber(Tokenizer->At[DiceIndex])) {
                         ++DiceIndex;
                     }
 
-                    if(DiceIndex == StartDiceIndex) {
-                        Result.ErrorMessage = CopyOnHeap(String("You must provide the number of sides a die has."));
+                    if(DiceIndex > 0) {
+                        string NumDiceString = StringWithLength(Tokenizer->At, DiceIndex);
+                        NumDice = StringToIntUnchecked(NumDiceString);
+                    }
+
+                    if(NumDice == 0) {
+                        Result.ErrorMessage = String("Num dice must be greater than zero");
                         Result.Type = TokenTypeError;
-                    } else if(DiceIndex < TokenEndIndex) {
-                        Result.ErrorMessage = CopyOnHeap(String("Trailing characters after number of sides."));
-                        Result.Type = TokenTypeError;
-                    } else {
-                        string NumSidesString = StringWithLength(Tokenizer->At + StartDiceIndex, TokenEndIndex - StartDiceIndex);
-                        int NumSides = StringToIntUnchecked(NumSidesString);
-                        
-                        if(NumSides == 0) {
-                            Result.ErrorMessage = CopyOnHeap(String("Num sides must be greater than zero"));
+                    } else if(DiceIndex == TokenEndIndex) {
+                        Result.Number = NumDice;
+                        Result.Type = TokenTypeNumber;
+                    } else if((Tokenizer->At[DiceIndex] | 0x20) == 'd' /* Case-insensitive comparison */) {
+                        ++DiceIndex;
+                        int StartDiceIndex = DiceIndex;
+                        while(IsNumber(Tokenizer->At[DiceIndex])) {
+                            ++DiceIndex;
+                        }
+
+                        if(DiceIndex == StartDiceIndex) {
+                            Result.ErrorMessage = String("You must provide the number of sides a die has.");
+                            Result.Type = TokenTypeError;
+                        } else if(DiceIndex < TokenEndIndex) {
+                            Result.ErrorMessage = String("Trailing characters after number of sides.");
                             Result.Type = TokenTypeError;
                         } else {
-                            Result.Dice.Count    = NumDice;
-                            Result.Dice.NumSides = NumSides;
-                            Result.Type = TokenTypeDice;
-                        }
-                    }
-                } else {
-                    string ErrStart = String("Unrecognized token: ");
-                    Result.ErrorMessage = AllocateString(ErrStart.Length + TokenEndIndex);
-                    StringConcat(ErrStart, StringWithLength(Tokenizer->At, TokenEndIndex), Result.ErrorMessage);
-                    Result.Type = TokenTypeError;
-                }
-            }
-            Tokenizer->At += TokenEndIndex;
-        } else {
-            Result.ErrorMessage = CopyOnHeap(String("Unknown character '-'"));
-            Result.ErrorMessage.Contents[Result.ErrorMessage.Length - 2] = Char;
-            Result.Type = TokenTypeError;
-            Tokenizer->At += 1;
-        }
+                            string NumSidesString = StringWithLength(Tokenizer->At + StartDiceIndex, TokenEndIndex - StartDiceIndex);
+                            int NumSides = StringToIntUnchecked(NumSidesString);
 
+                            if(NumSides == 0) {
+                                Result.ErrorMessage = String("Num sides must be greater than zero");
+                                Result.Type = TokenTypeError;
+                            } else {
+                                Result.Dice.Count    = NumDice;
+                                Result.Dice.NumSides = NumSides;
+                                Result.Type = TokenTypeDice;
+                            }
+                        }
+                    } else {
+                        // string ErrStart = String("Unrecognized token: ");
+                        // Result.ErrorMessage = AllocateString(ErrStart.Length + TokenEndIndex);
+                        // StringConcat(ErrStart, StringWithLength(Tokenizer->At, TokenEndIndex), Result.ErrorMessage);
+                        // Result.Type = TokenTypeError;
+
+                        Result.Identifier = StringWithLength(Tokenizer->At, TokenEndIndex);
+                        Result.Type = TokenTypeIdentifier;
+                    }
+                }
+                Tokenizer->At += TokenEndIndex;
+            } else {
+                static char ErrorMessageBuffer[] = "Unknown character '-'";
+                Result.ErrorMessage = String(ErrorMessageBuffer);
+                Result.ErrorMessage.Contents[Result.ErrorMessage.Length - 2] = Char;
+                Result.Type = TokenTypeError;
+                Tokenizer->At += 1;
+            }
+        }
     }
 
     return Result;
@@ -390,12 +403,41 @@ int main() {
                 IsReading = false;
             } else if(CurrentToken.Type == TokenTypeAddItem) {
                 token ItemToAddToken = GetToken(&Tokenizer);
+                string ItemToAddString = {};
+
+                if(ItemToAddToken.Type == TokenTypeIdentifier) {
+                    ItemToAddString = ItemToAddToken.Identifier;
+                } else if(ItemToAddToken.Type == TokenTypeString) {
+                    ItemToAddString = ItemToAddToken.String;
+                } else if(ItemToAddToken.Type == TokenTypeDice) {
+                    // ItemToAddString = CopyOnHeap(String());
+                } else {
+                    printw("Invalid token given for item name. Expected word or string.");
+                    IsReading = false;
+                }
+
                 // TODO: Add item
-                printw("Item adding is incomplete");
+                if(ItemToAddString.Length > 0) {
+                    printw("Will add item '%.*s'\n", StringAsArgs(ItemToAddString));
+                }
             } else if(CurrentToken.Type == TokenTypeRemoveItem) {
                 token ItemToRemoveToken = GetToken(&Tokenizer);
+                string ItemToRemoveString = {};
+
+                if(ItemToRemoveToken.Type == TokenTypeIdentifier) {
+                    ItemToRemoveString = ItemToRemoveToken.Identifier;
+                } else if(ItemToRemoveToken.Type == TokenTypeString) {
+                    ItemToRemoveString = ItemToRemoveToken.String;
+                } else if(ItemToRemoveToken.Type == TokenTypeDice) {
+                } else {
+                    printw("Invalid token given for item name. Expected word or string.");
+                    IsReading = false;
+                }
+
                 // TODO: Remove item
-                printw("Item removing is incomplete");
+                if(ItemToRemoveString.Length > 0) {
+                    printw("Will remove item '%.*s'\n", StringAsArgs(ItemToRemoveString));
+                }
             } else if(CurrentToken.Type == TokenTypeQuit) {
                 IsRunning = false;
                 IsReading = false;
@@ -435,13 +477,14 @@ int main() {
                            Total, Max, Min);
                 }
 
+            } else if(CurrentToken.Type == TokenTypeIdentifier) {
+                printw("Error: '%.*s' is not a valid command\n", StringAsArgs(CurrentToken.Identifier));
             } else if(CurrentToken.Type == TokenTypeNumber) {
                 printw("Error: Cannot start command with number\n");
             } else if(CurrentToken.Type == TokenTypeString) {
                 printw("Error: Cannot start command with string\n");
             } else if(CurrentToken.Type == TokenTypeError) {
                 printw("Error: %.*s\n", StringAsArgs(CurrentToken.ErrorMessage));
-                DeallocateString(&CurrentToken.ErrorMessage);
                 IsReading = false;
             }
             refresh();
