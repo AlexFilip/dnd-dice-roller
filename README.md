@@ -25,12 +25,12 @@ Start up the program with
 build/dice
 ```
 
-Now you can input the dice you want to roll on one line with the format `d[0-9]+`:
+You can input the dice you want to roll on one line with the format `d[0-9]+`:
 ```
 d20 d12
 ```
 
-You can specify the number of sides with a leading number:
+You can specify multiple dice with a leading number:
 ```
 2d6
 ```

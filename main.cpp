@@ -24,6 +24,7 @@
  *  - adding and removing items
  *  - Allow GetToken to treat individual words as strings even if it is not a valid token.
  *  - If the user types something and moves up or down in the line buffer, save the working line into the buffer and copy back when they go past the end of the line buffer
+ *  - FIX: After resizing, deleting characters, then pressing enter, it will output 2 lines. The expected output and "Error: Unknown character '"
  *
  *  - adv, dis, sum/total after dice for advantage, disadvantage, total
  *  - labels on dice. ex. 2d20:attack, which will use "attack" instead of 2d20 in the result labels
@@ -34,13 +35,13 @@
  *  - Math expressions that include dice. Ex. "2 * (2d20 + 4) - 3d8 > 7 - 3d6"
  */
 
-#define UpArrow 259
-#define DownArrow 258
-#define LeftArrow 260
+#define UpArrow    259
+#define DownArrow  258
+#define LeftArrow  260
 #define RightArrow 261
 
 #define Backspace 263
-#define Delete 330
+#define Delete    330
 
 struct position {
     int X;
@@ -238,7 +239,7 @@ token GetToken(tokenizer* Tokenizer) {
     return Result;
 }
 
-char const prompt[] = "> ";
+char const Prompt[] = "> ";
 
 int main() {
     char Buffer[100];
@@ -256,10 +257,10 @@ int main() {
     IsRunning = true;
     while(IsRunning) {
         move(0, 0);
-        addstr(prompt);
+        addstr(Prompt);
         refresh();
 
-        int BufferIndex = 0;
+        int BufferIndex  = 0;
         int BufferLength = 0;
         memset(Buffer, 0, ArrayLength(Buffer));
         LineBufferPosition = 0;
@@ -267,7 +268,6 @@ int main() {
         bool TypedFirstKey = false;
         for(;;) {
             int Char = getch();
-            // DebugPrint("Char is %d", Char);
 
             if(!TypedFirstKey) {
                 wclrtoeol(stdscr);
@@ -306,8 +306,6 @@ int main() {
                         position CurrentPos = CurrentPosition();
                         move(CurrentPos.Y + 1, 0);
 
-                        // DebugPrint("Command is %s\n", Buffer);
-
                         string HeapString = CopyOnHeap(StringFromC(Buffer));
                         Append(&LineBuffer, HeapString);
 
@@ -328,7 +326,7 @@ int main() {
                         BufferLength = PrevString.Length;
 
                         // redraw line
-                        move(0, StringLength(prompt));
+                        move(0, StringLength(Prompt));
                         wclrtoeol(stdscr);
                         addstr(Buffer);
                     }
@@ -350,7 +348,7 @@ int main() {
                         BufferLength = NextString.Length;
 
                         // redraw line
-                        move(0, StringLength(prompt));
+                        move(0, StringLength(Prompt));
                         wclrtoeol(stdscr);
                         addstr(Buffer);
 
@@ -372,15 +370,28 @@ int main() {
                 } else if(Char == 127 || Char == KEY_BACKSPACE || Char == KEY_DC) {
                     if(BufferIndex > 0) {
                         --BufferIndex;
-                        for(int Index = BufferIndex; Index < StringLength(Buffer) && Buffer[Index] != 0; ++Index) {
+
+                        for(int Index = BufferIndex; Index < BufferLength; ++Index) {
                             Buffer[Index] = Buffer[Index + 1];
                         }
+
+                        Buffer[BufferLength] = 0;
+                        --BufferLength;
+
                         position Cursor = CurrentPosition();
                         --Cursor.X;
                         MoveCursor(Cursor);
                         // this function takes care of all the on screen deleting on a line
                         wdelch(stdscr);
                     }
+                } else if(Char == KEY_RESIZE) {
+                    move(0, 0);
+                    wclrtobot(stdscr);
+                    addstr(Prompt);
+                    addstr(Buffer);
+                    move(0, BufferIndex + StringLength(Prompt));
+
+                    // TODO: Save output and draw it 
                 }
                 // TODO: Check for control and special characters
             }
@@ -442,8 +453,6 @@ int main() {
                 IsRunning = false;
                 IsReading = false;
             } else if(CurrentToken.Type == TokenTypeDice) {
-                // printw("Rolling %d dice with %d sides\n", CurrentToken.Dice.Count, CurrentToken.Dice.NumSides);
-                // TODO: I might want to factor this out into its own function in case I want to add dice as items. Then I can use it later.
                 int Total = 0;
                 int Max = 0;
                 int Min = 0x7FFFFFFF;
@@ -487,8 +496,8 @@ int main() {
                 printw("Error: %.*s\n", StringAsArgs(CurrentToken.ErrorMessage));
                 IsReading = false;
             }
-            refresh();
         }
+        refresh();
     }
 
     endwin();
