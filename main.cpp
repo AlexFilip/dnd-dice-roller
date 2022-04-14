@@ -105,7 +105,7 @@ DebugPrint(char const* format, ...) {
     // wclrtoeol(stdscr);
     // wprintw(stdscr, Buffer);
 
-    // MoveCursor(StartPos);
+    // MoveCursorTo(StartPos);
 }
 
 struct dice_collection {
@@ -278,7 +278,7 @@ ClearToEndOfLine() {
 }
 
 internal void
-MoveCursor(vector_i Position) {
+MoveCursorTo(vector_i Position) {
     char Buffer[32] = {};
     snprintf(Buffer, sizeof(Buffer), "\x1b[%d;%df", Position.Y, Position.X);
 
@@ -286,7 +286,7 @@ MoveCursor(vector_i Position) {
 }
 
 internal void
-MoveCursorHorizontalBy(int NumPositions) {
+MoveCursorByX(int NumPositions) {
     if(NumPositions != 0) {
         char Char = 'C';
         if(NumPositions < 0) {
@@ -300,6 +300,29 @@ MoveCursorHorizontalBy(int NumPositions) {
         Buffer[StringLength] = Char;
         write(STDOUT_FILENO, Buffer, StringLength + 1);
     }
+}
+
+internal void
+MoveCursorByY(int NumPositions) {
+    if(NumPositions != 0) {
+        char Char = 'B';
+        if(NumPositions < 0) {
+            Char = 'A';
+            NumPositions = -NumPositions;
+        }
+        char Buffer[32] = {};
+        snprintf(Buffer, sizeof(Buffer) - 1, "\x1b[%d", NumPositions);
+
+        int StringLength = strlen(Buffer);
+        Buffer[StringLength] = Char;
+        write(STDOUT_FILENO, Buffer, StringLength + 1);
+    }
+}
+
+internal void
+MoveCursorBy(vector_i Vec) {
+    MoveCursorByX(Vec.X);
+    MoveCursorByY(Vec.Y);
 }
 
 static char const Prompt[] = "> ";
@@ -345,7 +368,7 @@ int main() {
 
                     int NumCharsLeft = BufferLength - BufferIndex;
                     write(STDOUT_FILENO, &Buffer[BufferIndex], NumCharsLeft);
-                    MoveCursorHorizontalBy(-NumCharsLeft);
+                    MoveCursorByX(-NumCharsLeft);
                 }
             } else {
                 if(Char == '\r' || Char == '\n') {
@@ -381,7 +404,7 @@ int main() {
 
                                     // redraw line
                                     // A little inefficient but I'll find a better way later
-                                    MoveCursorHorizontalBy(-StartBufferIndex);
+                                    MoveCursorByX(-StartBufferIndex);
                                     ClearToEndOfLine();
                                     write(STDOUT_FILENO, Buffer, BufferIndex);
                                 }
@@ -404,7 +427,7 @@ int main() {
                                     BufferLength = NextString.Length;
 
                                     // redraw line
-                                    MoveCursorHorizontalBy(-StartBufferIndex);
+                                    MoveCursorByX(-StartBufferIndex);
                                     ClearToEndOfLine();
                                     write(STDOUT_FILENO, Buffer, BufferIndex);
                                 }
@@ -427,7 +450,7 @@ int main() {
                     } else if (Char == 127) {
                         // Backspace
                         if(BufferIndex > 0) {
-                            MoveCursorHorizontalBy(-1);
+                            MoveCursorByX(-1);
                             --BufferIndex;
 
                             for(int Index = BufferIndex; Index < BufferLength; ++Index) {
@@ -439,12 +462,12 @@ int main() {
 
                             write(STDOUT_FILENO, &Buffer[BufferIndex], BufferLength - BufferIndex);
                             ClearToEndOfLine();
-                            MoveCursorHorizontalBy(BufferIndex - BufferLength);
+                            MoveCursorByX(BufferIndex - BufferLength);
                         }
                     } else if(Char == 4) {
                         // Ctrl-D
                     } else if(Char == 3) {
-                        MoveCursorHorizontalBy(-BufferLength);
+                        MoveCursorByX(-BufferLength);
                         BufferIndex = 0;
                         BufferLength = 0;
                         ClearToEndOfLine();
@@ -452,7 +475,6 @@ int main() {
                     } else {
                         printf("\r\nOther control char [%d]\r\n", Char);
                     }
-                    // A up, b down
                 }
                 // TODO: Check for control and special characters
             }
