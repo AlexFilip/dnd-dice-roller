@@ -11,7 +11,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <ncurses.h>
+// #include <ncurses.h>
+#include <termios.h>
+#include <sys/ioctl.h>
 #include <stdarg.h>
 
 #include "common_defs.h"
@@ -30,9 +32,11 @@
  *  - labels on dice. ex. 2d20:attack, which will use "attack" instead of 2d20 in the result labels
  *  - comparison operators: >, <, >=, <= which just say true/false or succeeded/failed (ex. 2d12 > 7 will compare the total of 2d12 to 7)
  *    Q: What should the precedence be on labels vs. comparison operators?
+ *  - Distribution information on dice rolls
  *
  *  Eventually (just for fun)
  *  - Math expressions that include dice. Ex. "2 * (2d20 + 4) - 3d8 > 7 - 3d6"
+ *  - Functions like min(), max(), sum() to ensure the desired number is used
  */
 
 #define UpArrow    259
@@ -40,57 +44,68 @@
 #define LeftArrow  260
 #define RightArrow 261
 
-#define Backspace 263
+// #define Backspace 263
 #define Delete    330
 
-struct position {
-    int X;
-    int Y;
+struct termios orig_termios;
+void disableRawMode() {
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
+}
+
+void enableRawMode() {
+    tcgetattr(STDIN_FILENO, &orig_termios);
+    atexit(disableRawMode);
+
+    struct termios raw = orig_termios;
+    raw.c_iflag &= ~(BRKINT | INPCK | ISTRIP | IXON);
+    raw.c_oflag &= ~(OPOST);
+    raw.c_cflag |= (CS8);
+    raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
+    // Timeout for read
+    // raw.c_cc[VMIN] = 0;
+    // raw.c_cc[VTIME] = 1;
+
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
+}
+
+struct vector_i {
+    int X, Y;
 };
 
-internal position
-CurrentPosition() {
-    position result = {};
+internal vector_i
+GetWindowSize() {
+    vector_i Result = {};
+    struct winsize ws;
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) != -1 && ws.ws_col != 0) {
+        Result.Y = ws.ws_col;
+        Result.X = ws.ws_row;
+    }
 
-    getyx(stdscr, result.Y, result.X);
-
-    return result;
+    return Result;
 }
 
-internal position
-WindowSize() {
-    position result = {};
 
-    getmaxyx(stdscr, result.Y, result.X);
-
-    return result;
-}
-
-internal void
-MoveCursor(position Position) {
-    move(Position.Y, Position.X);
-}
 
 internal void
 DebugPrint(char const* format, ...) {
-    position StartPos = CurrentPosition();
-    position win_size = WindowSize();
+    // position StartPos = CurrentPosition();
+    // position win_size = WindowSize();
 
-    move(win_size.Y - 1, 0);
+    // move(win_size.Y - 1, 0);
 
-    char Buffer[4096];
+    // char Buffer[4096];
 
-    va_list args;
-    va_start(args, format);
+    // va_list args;
+    // va_start(args, format);
 
-    vsnprintf(Buffer, ArrayLength(Buffer), format, args);
+    // vsnprintf(Buffer, ArrayLength(Buffer), format, args);
 
-    va_end(args);
+    // va_end(args);
 
-    wclrtoeol(stdscr);
-    wprintw(stdscr, Buffer);
+    // wclrtoeol(stdscr);
+    // wprintw(stdscr, Buffer);
 
-    MoveCursor(StartPos);
+    // MoveCursor(StartPos);
 }
 
 struct dice_collection {
@@ -127,7 +142,8 @@ struct tokenizer {
     char* End;
 };
 
-token GetToken(tokenizer* Tokenizer) {
+internal token
+GetToken(tokenizer* Tokenizer) {
     // NOTE: Error messages should be copied onto the heap and strings that are
     // part of the command should just refer to their places in the buffer.
     token Result = {};
@@ -239,7 +255,54 @@ token GetToken(tokenizer* Tokenizer) {
     return Result;
 }
 
-char const Prompt[] = "> ";
+internal char
+ReadChar() {
+    char Result = '\0';
+    while(read(STDIN_FILENO, &Result, 1) == 0) {
+        // Can do non-char update (animations or whatever)
+        // probably won't want to but it's interesting to have here for another project
+        // char Message[] = "Update";
+        // write(STDOUT_FILENO, Message, sizeof(Message));
+    }
+    return Result;
+}
+
+internal void
+WriteChar(char C) {
+    write(STDOUT_FILENO, &C, 1);
+}
+
+internal void
+ClearToEndOfLine() {
+    write(STDOUT_FILENO, "\x1b[0K", 4);
+}
+
+internal void
+MoveCursor(vector_i Position) {
+    char Buffer[32] = {};
+    snprintf(Buffer, sizeof(Buffer), "\x1b[%d;%df", Position.Y, Position.X);
+
+    write(STDOUT_FILENO, Buffer, strlen(Buffer));
+}
+
+internal void
+MoveCursorHorizontalBy(int NumPositions) {
+    if(NumPositions != 0) {
+        char Char = 'C';
+        if(NumPositions < 0) {
+            Char = 'D';
+            NumPositions = -NumPositions;
+        }
+        char Buffer[32] = {};
+        snprintf(Buffer, sizeof(Buffer) - 1, "\x1b[%d", NumPositions);
+
+        int StringLength = strlen(Buffer);
+        Buffer[StringLength] = Char;
+        write(STDOUT_FILENO, Buffer, StringLength + 1);
+    }
+}
+
+static char const Prompt[] = "> ";
 
 int main() {
     char Buffer[100];
@@ -249,32 +312,22 @@ int main() {
     int LineBufferPosition = 0;
     bool IsRunning = false;
 
-    initscr();
-    raw();
-    keypad(stdscr, TRUE);
-    noecho();
-
+    enableRawMode();
     IsRunning = true;
     while(IsRunning) {
-        move(0, 0);
-        addstr(Prompt);
-        refresh();
+        printf(Prompt);
+        fflush(stdout);
 
         int BufferIndex  = 0;
         int BufferLength = 0;
         memset(Buffer, 0, ArrayLength(Buffer));
         LineBufferPosition = 0;
 
-        bool TypedFirstKey = false;
         for(;;) {
-            int Char = getch();
-
-            if(!TypedFirstKey) {
-                wclrtoeol(stdscr);
-                TypedFirstKey = true;
-            }
+            int Char = ReadChar();
 
             if(isprint(Char)) {
+                WriteChar(Char);
                 if(BufferLength < StringLength(Buffer)) {
                     char NextLetter = (char) Char;
                     int StartBufferIndex = BufferIndex;
@@ -285,118 +338,124 @@ int main() {
                         NextLetter = temp;
                         ++CurrentIndex;
                     }
+
                     Buffer[CurrentIndex] = '\0';
                     ++BufferIndex;
                     ++BufferLength;
 
-                    position StartPos = CurrentPosition();
-                    CurrentIndex = StartBufferIndex;
-                    while(CurrentIndex < StringLength(Buffer) && Buffer[CurrentIndex] != 0) {
-                        addch(Buffer[CurrentIndex]);
-                        CurrentIndex++;
-                    }
-
-                    ++StartPos.X;
-                    MoveCursor(StartPos);
+                    int NumCharsLeft = BufferLength - BufferIndex;
+                    write(STDOUT_FILENO, &Buffer[BufferIndex], NumCharsLeft);
+                    MoveCursorHorizontalBy(-NumCharsLeft);
                 }
             } else {
-                if(Char == '\n') {
+                if(Char == '\r' || Char == '\n') {
                     if(BufferLength != 0) {
-                        wclrtobot(stdscr);
-                        position CurrentPos = CurrentPosition();
-                        move(CurrentPos.Y + 1, 0);
+                        printf("\r\n");
 
                         string HeapString = CopyOnHeap(StringFromC(Buffer));
                         Append(&LineBuffer, HeapString);
 
                         break;
                     }
-                } else if(Char == KEY_UP) {
-                    if(LineBufferPosition >= 0 && LineBufferPosition < LineBuffer.Length) {
-                        if(LineBufferPosition == 0) {
-                            // line currently being typed
+                } else if(iscntrl(Char)) {
+                    if(Char == 0x1b) {
+                        Char = ReadChar();
+                        if(Char == '[') {
+                            // Arrow keys and maybe other control characters
+                            Char = ReadChar();
+                            if(Char == 'A') {
+                                // printf("[Up]");
+                                if(LineBufferPosition >= 0 && LineBufferPosition < LineBuffer.Length) {
+                                    if(LineBufferPosition == 0) {
+                                        // line currently being typed
+                                    }
+
+                                    ++LineBufferPosition;
+                                    string PrevString = LineBuffer.At(LineBuffer.Length - LineBufferPosition);
+                                    CopyInto(PrevString, Buffer);
+
+                                    int StartBufferIndex = BufferIndex;
+                                    Buffer[PrevString.Length] = '\0';
+                                    BufferIndex = PrevString.Length;
+                                    BufferLength = PrevString.Length;
+
+                                    // redraw line
+                                    // A little inefficient but I'll find a better way later
+                                    MoveCursorHorizontalBy(-StartBufferIndex);
+                                    ClearToEndOfLine();
+                                    write(STDOUT_FILENO, Buffer, BufferIndex);
+                                }
+                            } else if(Char == 'B') {
+                                if(LineBufferPosition >= 0 && LineBufferPosition <= LineBuffer.Length) {
+                                    string NextString = {};
+
+                                    if(LineBufferPosition == 0) {
+                                        // TODO: Copy working line into buffer
+                                    } else {
+                                        --LineBufferPosition;
+                                        NextString = LineBuffer.At(LineBuffer.Length - LineBufferPosition);
+                                    }
+
+                                    CopyInto(NextString, Buffer);
+
+                                    int StartBufferIndex = BufferIndex;
+                                    Buffer[NextString.Length] = '\0';
+                                    BufferIndex = NextString.Length;
+                                    BufferLength = NextString.Length;
+
+                                    // redraw line
+                                    MoveCursorHorizontalBy(-StartBufferIndex);
+                                    ClearToEndOfLine();
+                                    write(STDOUT_FILENO, Buffer, BufferIndex);
+                                }
+                            } else if(Char == 'C') {
+                                if(Buffer[BufferIndex] != 0 && BufferIndex < BufferLength) {
+                                    ++BufferIndex;
+                                    // Move cursor right
+                                    char MoveRight[] = { '\x1b', '[', 'C' };
+                                    write(STDOUT_FILENO, MoveRight, 3);
+                                }
+                            } else if(Char == 'D') {
+                                if(BufferIndex > 0) {
+                                    --BufferIndex;
+                                    // Move cursor left
+                                    char MoveLeft[] = { '\x1b', '[', 'D' };
+                                    write(STDOUT_FILENO, MoveLeft, 3);
+                                }
+                            }
                         }
+                    } else if (Char == 127) {
+                        // Backspace
+                        if(BufferIndex > 0) {
+                            MoveCursorHorizontalBy(-1);
+                            --BufferIndex;
 
-                        ++LineBufferPosition;
-                        string PrevString = LineBuffer.At(LineBuffer.Length - LineBufferPosition);
-                        CopyInto(PrevString, Buffer);
+                            for(int Index = BufferIndex; Index < BufferLength; ++Index) {
+                                Buffer[Index] = Buffer[Index + 1];
+                            }
 
-                        Buffer[PrevString.Length] = '\0';
-                        BufferIndex = PrevString.Length;
-                        BufferLength = PrevString.Length;
+                            Buffer[BufferLength] = 0;
+                            --BufferLength;
 
-                        // redraw line
-                        move(0, StringLength(Prompt));
-                        wclrtoeol(stdscr);
-                        addstr(Buffer);
-                    }
-                } else if(Char == KEY_DOWN) {
-                    if(LineBufferPosition >= 0 && LineBufferPosition <= LineBuffer.Length) {
-                        string NextString = {};
-
-                        if(LineBufferPosition == 0) {
-                            // TODO: Copy working line into buffer
-                        } else {
-                            --LineBufferPosition;
-                            NextString = LineBuffer.At(LineBuffer.Length - LineBufferPosition);
+                            write(STDOUT_FILENO, &Buffer[BufferIndex], BufferLength - BufferIndex);
+                            ClearToEndOfLine();
+                            MoveCursorHorizontalBy(BufferIndex - BufferLength);
                         }
-
-                        CopyInto(NextString, Buffer);
-
-                        Buffer[NextString.Length] = '\0';
-                        BufferIndex = NextString.Length;
-                        BufferLength = NextString.Length;
-
-                        // redraw line
-                        move(0, StringLength(Prompt));
-                        wclrtoeol(stdscr);
-                        addstr(Buffer);
-
+                    } else if(Char == 4) {
+                        // Ctrl-D
+                    } else if(Char == 3) {
+                        MoveCursorHorizontalBy(-BufferLength);
+                        BufferIndex = 0;
+                        BufferLength = 0;
+                        ClearToEndOfLine();
+                        Buffer[BufferIndex] = 0;
+                    } else {
+                        printf("\r\nOther control char [%d]\r\n", Char);
                     }
-                } else if(Char == KEY_LEFT) {
-                    if(BufferIndex > 0) {
-                        --BufferIndex;
-                        position Cursor = CurrentPosition();
-                        --Cursor.X;
-                        MoveCursor(Cursor);
-                    }
-                } else if(Char == KEY_RIGHT) {
-                    if(Buffer[BufferIndex] != 0 && BufferIndex < BufferLength) {
-                        ++BufferIndex;
-                        position Position = CurrentPosition();
-                        ++Position.X;
-                        MoveCursor(Position);
-                    }
-                } else if(Char == 127 || Char == KEY_BACKSPACE || Char == KEY_DC) {
-                    if(BufferIndex > 0) {
-                        --BufferIndex;
-
-                        for(int Index = BufferIndex; Index < BufferLength; ++Index) {
-                            Buffer[Index] = Buffer[Index + 1];
-                        }
-
-                        Buffer[BufferLength] = 0;
-                        --BufferLength;
-
-                        position Cursor = CurrentPosition();
-                        --Cursor.X;
-                        MoveCursor(Cursor);
-                        // this function takes care of all the on screen deleting on a line
-                        wdelch(stdscr);
-                    }
-                } else if(Char == KEY_RESIZE) {
-                    move(0, 0);
-                    wclrtobot(stdscr);
-                    addstr(Prompt);
-                    addstr(Buffer);
-                    move(0, BufferIndex + StringLength(Prompt));
-
-                    // TODO: Save output and draw it 
+                    // A up, b down
                 }
                 // TODO: Check for control and special characters
             }
-
-            refresh();
         }
 
         char* Text = Buffer;
@@ -423,13 +482,15 @@ int main() {
                 } else if(ItemToAddToken.Type == TokenTypeDice) {
                     // ItemToAddString = CopyOnHeap(String());
                 } else {
-                    printw("Invalid token given for item name. Expected word or string.");
+                    // printw("Invalid token given for item name. Expected word or string.");
+                    printf("Invalid token given for item name. Expected word or string.");
                     IsReading = false;
                 }
 
                 // TODO: Add item
                 if(ItemToAddString.Length > 0) {
-                    printw("Will add item '%.*s'\n", StringAsArgs(ItemToAddString));
+                    // printw("Will add item '%.*s'\n", StringAsArgs(ItemToAddString));
+                    printf("Will add item '%.*s'\r\n", StringAsArgs(ItemToAddString));
                 }
             } else if(CurrentToken.Type == TokenTypeRemoveItem) {
                 token ItemToRemoveToken = GetToken(&Tokenizer);
@@ -441,13 +502,15 @@ int main() {
                     ItemToRemoveString = ItemToRemoveToken.String;
                 } else if(ItemToRemoveToken.Type == TokenTypeDice) {
                 } else {
-                    printw("Invalid token given for item name. Expected word or string.");
+                    // printw("Invalid token given for item name. Expected word or string.");
+                    printf("Invalid token given for item name. Expected word or string.");
                     IsReading = false;
                 }
 
                 // TODO: Remove item
                 if(ItemToRemoveString.Length > 0) {
-                    printw("Will remove item '%.*s'\n", StringAsArgs(ItemToRemoveString));
+                    // printw("Will remove item '%.*s'\n", StringAsArgs(ItemToRemoveString));
+                    printf("Will remove item '%.*s'\r\n", StringAsArgs(ItemToRemoveString));
                 }
             } else if(CurrentToken.Type == TokenTypeQuit) {
                 IsRunning = false;
@@ -456,7 +519,7 @@ int main() {
                 int Total = 0;
                 int Max = 0;
                 int Min = 0x7FFFFFFF;
-                
+
                 for(int Index = 0; Index < CurrentToken.Dice.Count; ++Index) {
                     int Num = rand() % CurrentToken.Dice.NumSides + 1;
                     Total += Num;
@@ -473,34 +536,45 @@ int main() {
                 // This weird way of printing the dice and checking that the count is 1 two times is here
                 // because using "%dd%d" as a format string leads to weird output.
                 if(CurrentToken.Dice.Count != 1) {
-                    printw("%d", CurrentToken.Dice.Count);
+                    // printw("%d", CurrentToken.Dice.Count);
+                    printf("%d", CurrentToken.Dice.Count);
                 }
-                printw("d%d:\n", CurrentToken.Dice.NumSides);
+                // printw("d%d:\n", CurrentToken.Dice.NumSides);
+                printf("d%d:\r\n", CurrentToken.Dice.NumSides);
 
                 if(CurrentToken.Dice.Count == 1) {
-                    printw("  %d\n\n", Total);
+                    // printw("  %d\n\n", Total);
+                    printf("  %d\r\n\r\n", Total);
                 } else {
-                    printw("  Total: %d\n"
-                           "  Max: %d\n"
-                           "  Min: %d\n\n",
+                    // printw("  Total: %d\n"
+                    //        "  Max: %d\n"
+                    //        "  Min: %d\n\n",
+                    //        Total, Max, Min);
+                    printf("  Total: %d\r\n"
+                           "  Max: %d\r\n"
+                           "  Min: %d\r\n\r\n",
                            Total, Max, Min);
                 }
 
             } else if(CurrentToken.Type == TokenTypeIdentifier) {
-                printw("Error: '%.*s' is not a valid command\n", StringAsArgs(CurrentToken.Identifier));
+                // printw("Error: '%.*s' is not a valid command\n", StringAsArgs(CurrentToken.Identifier));
+                printf("Error: '%.*s' is not a valid command\r\n", StringAsArgs(CurrentToken.Identifier));
             } else if(CurrentToken.Type == TokenTypeNumber) {
-                printw("Error: Cannot start command with number\n");
+                // printw("Error: Cannot start command with number\n");
+                printf("Error: Cannot start command with number\r\n");
             } else if(CurrentToken.Type == TokenTypeString) {
-                printw("Error: Cannot start command with string\n");
+                // printw("Error: Cannot start command with string\n");
+                printf("Error: Cannot start command with string\r\n");
             } else if(CurrentToken.Type == TokenTypeError) {
-                printw("Error: %.*s\n", StringAsArgs(CurrentToken.ErrorMessage));
+                // printw("Error: %.*s\n", StringAsArgs(CurrentToken.ErrorMessage));
+                printf("Error: %.*s\r\n", StringAsArgs(CurrentToken.ErrorMessage));
                 IsReading = false;
             }
         }
-        refresh();
+        // refresh();
     }
 
-    endwin();
+    // endwin();
 
     return 0;
 }
