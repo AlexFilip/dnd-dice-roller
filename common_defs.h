@@ -2,12 +2,6 @@
 #ifndef COMMON_DEFS_H_
 #define COMMON_DEFS_H_
 
-#include <stdio.h>
-#include <stdlib.h>
-
-#include <stdarg.h>
-#include <stdint.h>
-
 #define internal      static
 #define global        static
 #define local_persist static
@@ -27,6 +21,8 @@
 
 #if DEBUG
 
+// Usually I like to have all includes in the main compile.
+// TODO: Investigate if this include can be moved out of this file.
 #include <signal.h>
 #if defined(SIGTRAP)
 #define DEBUG_FAIL raise(SIGTRAP)
@@ -48,15 +44,14 @@
 // ---
 
 #ifdef __cplusplus
-
 namespace _impl {
-    template<class _type> struct RmRef          { typedef _type type; };
-    template<class _type> struct RmRef<_type&>  { typedef _type type; };
-    template<class _type> struct RmRef<_type&&> { typedef _type type; };
+    template<class type_> struct rm_ref          { typedef type_ type; };
+    template<class type_> struct rm_ref<type_&>  { typedef type_ type; };
+    template<class type_> struct rm_ref<type_&&> { typedef type_ type; };
 }
 template<class type>
-using RmRef = typename _impl::RmRef<type>::type;
-#define array_element_type(Array) RmRef<decltype(Array[0])>
+using rm_ref = typename _impl::rm_ref<type>::type;
+#define array_element_type(Array) rm_ref<decltype(Array[0])>
 
 #define SubscriptOperator(type) \
     inline \

@@ -8,5 +8,4 @@ FILENAME=main
 OUTPUT_NAME=dice
 # FILENAME=template
 
-# -lncurses 
 clang++ -g --std=c++17 $FILENAME.cpp -o build/$OUTPUT_NAME && build/$OUTPUT_NAME

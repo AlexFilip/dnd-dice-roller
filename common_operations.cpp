@@ -417,8 +417,8 @@ Map(array<input_element> Array, transform_function Fn) -> array<decltype(Fn(Arra
     return Result;
 }
 template<class input_element, class transform_function> auto
-FlatMap(array<input_element> Array, transform_function Fn) -> array<RmRef<decltype(Fn(Array.Contents[0]).Contents[0])>> {
-    typedef RmRef<decltype(Fn(Array.Contents[0]).Contents[0])> output_element;
+FlatMap(array<input_element> Array, transform_function Fn) -> array<rm_ref<decltype(Fn(Array.Contents[0]).Contents[0])>> {
+    typedef rm_ref<decltype(Fn(Array.Contents[0]).Contents[0])> output_element;
 
     dynamic_array<output_element> Result = {};
     for(int Index = 0; Index < Array.Length; ++Index) {
@@ -430,8 +430,8 @@ FlatMap(array<input_element> Array, transform_function Fn) -> array<RmRef<declty
 }
 
 template<class input_element, class transform_function> auto
-FlatMap(array<input_element> Array, transform_function Fn) -> array<RmRef<decltype(Fn(Array.Contents[0], 0).Contents[0])>> {
-    typedef RmRef<decltype(Fn(Array.Contents[0], 0).Contents[0])> output_element;
+FlatMap(array<input_element> Array, transform_function Fn) -> array<rm_ref<decltype(Fn(Array.Contents[0], 0).Contents[0])>> {
+    typedef rm_ref<decltype(Fn(Array.Contents[0], 0).Contents[0])> output_element;
 
     dynamic_array<output_element> Result = {};
     for(int Index = 0; Index < Array.Length; ++Index) {
