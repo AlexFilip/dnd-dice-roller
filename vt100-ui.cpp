@@ -9,14 +9,8 @@ struct vector2_i {
 };
 
 
-enum SpecialCharType {
-    // NOTE: These are placeholders for the standard file descriptors. Prefer to use STDIN_FILENO, STDOUT_FILENO and STDERR_FILENO
-    _Stdin  = 0,
-    _Stdout = 1,
-    _Stderr = 2,
-
-    WindowResized,
-    MaxSpecialCharType
+enum SpecialCharType : int {
+    WindowResized = 256
 };
 
 global union {
@@ -65,7 +59,10 @@ internal int
 NextEPollFD() {
     int Result = 0;
     struct epoll_event EventData = EPollEventBuffer[EPollBufferIndex];
+
     EPollBufferIndex++;
+    NumEPollEvents -= 1;
+
     Result = EventData.data.fd;
 
     return Result;
@@ -182,7 +179,6 @@ ReadChar() {
         }
     }
 
-    NumEPollEvents -= 1;
 
     return Result;
 }
