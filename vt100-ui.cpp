@@ -9,8 +9,14 @@ struct vector2_i {
 };
 
 
-enum SpecialCharType : int {
-    WindowResized = 255
+enum SpecialCharType {
+    // NOTE: These are placeholders for the standard file descriptors. Prefer to use STDIN_FILENO, STDOUT_FILENO and STDERR_FILENO
+    _Stdin  = 0,
+    _Stdout = 1,
+    _Stderr = 2,
+
+    WindowResized,
+    MaxSpecialCharType
 };
 
 global union {
@@ -19,17 +25,34 @@ global union {
         int ReadHead;
         int WriteHead;
     };
-} SpecialReadPipe; // TODO: Rename
+} InternalMessagePipe; // TODO: Rename
+global bool SpecialReadPipeExists;
 
 global struct termios   OriginalTermIOs;
 global struct sigaction OldResizeAction;
 
-global fd_set ReadFileDescriptors;
-global int MaxFileDescriptor;
+global int EPollFileDescriptor;
+global struct epoll_event EPollEventBuffer[16];
+global int NumEPollEvents;
+global int EPollBufferIndex;
 
 internal void
-SetMaxFileDescriptor(int Descriptor) {
-    MaxFileDescriptor = MaxFileDescriptor > Descriptor ? MaxFileDescriptor : Descriptor;
+RegisterFDForEPollRead(int FileDescriptor) {
+    struct epoll_event EventData = {};
+    EventData.events = EPOLLIN;
+    EventData.data.fd = FileDescriptor;
+
+    epoll_ctl(EPollFileDescriptor, EPOLL_CTL_ADD, FileDescriptor, &EventData);
+}
+
+internal int
+NextEPollFD() {
+    int Result = 0;
+    struct epoll_event EventData = EPollEventBuffer[EPollBufferIndex];
+    EPollBufferIndex++;
+    Result = EventData.data.fd;
+
+    return Result;
 }
 
 internal void
@@ -55,11 +78,12 @@ EnableRawMode() {
 }
 
 internal void
-SetupSpecialReadPipe() {
-    if(SpecialReadPipe.ReadHead == 0 && SpecialReadPipe.WriteHead == 0) {
-        // uninitialized
-        pipe2(SpecialReadPipe.Pipe, O_NONBLOCK);
-    }
+EnableMouseTracking() {
+    char MouseTracking[] = "\x1b[1000h";
+    write(STDOUT_FILENO, MouseTracking, sizeof(MouseTracking));
+
+    char DecimalMouseTracking[] = "\x1b[1006h";
+    write(STDOUT_FILENO, DecimalMouseTracking, sizeof(DecimalMouseTracking));
 }
 
 internal vector2_i
@@ -77,19 +101,25 @@ GetWindowSize() {
 internal void
 ResizeSignalHandler(int Signal) {
     int Value = WindowResized;
-    write(SpecialReadPipe.WriteHead, &Value, sizeof(Value));
+    write(InternalMessagePipe.WriteHead, &Value, sizeof(Value));
 }
 
 internal void
-SetResizeSignal() {
+StartResizeHandling() {
     struct sigaction Action = {};
     Action.sa_handler = ResizeSignalHandler;
 
     sigaction(SIGWINCH, &Action, &OldResizeAction);
 
-    SetupSpecialReadPipe();
+    if(!SpecialReadPipeExists) {
+        // uninitialized
+        pipe2(InternalMessagePipe.Pipe, O_NONBLOCK);
+        SpecialReadPipeExists = true;
+    }
 
-    SetMaxFileDescriptor(SpecialReadPipe.ReadHead);
+    RegisterFDForEPollRead(InternalMessagePipe.ReadHead);
+    // SetMaxFileDescriptor(InternalMessagePipe.ReadHead);
+    // FD_SET(InternalMessagePipe.ReadHead, &ReadFileDescriptors);
 
     // NOTE: The docs say that you can do this or use pselect with the SignalSet as the last argument.
     //       I was not able to get this working. After trying both methods the result was the program
@@ -109,17 +139,34 @@ WriteChar(char C) {
 internal int
 ReadChar() {
     int Result = 0;
+    if(NumEPollEvents <= 0) {
+        // TODO: Replace select() with poll() or epoll()
 
-    select(STDIN_FILENO + 1, &ReadFileDescriptors, NULL, NULL, NULL);
-
-    vector2_i NewWindowSize = GetWindowSize();
-    if(read(SpecialReadPipe.ReadHead, &Result, sizeof(SpecialCharType)) > 0) {
-        // Result ok
-    } else if(read(STDIN_FILENO, &Result, 1) > 0) {
-        // Result ok
-    } else {
-        printf("READ ERROR!!!");
+        // NOTE: When resizing, this function gets unblocked, not by writing
+        // to InternalMessagePipe, but by SIGWINCH triggering its signal handler.
+        // select(MaxFileDescriptor + 1, &ReadFileDescriptors, NULL, NULL, NULL);
+        NumEPollEvents = epoll_wait(EPollFileDescriptor, EPollEventBuffer, ArrayLength(EPollEventBuffer), -1);
+        EPollBufferIndex = 0;
     }
+
+    int FileDescriptor = NextEPollFD();
+    if(SpecialReadPipeExists && FileDescriptor == InternalMessagePipe.ReadHead) {
+        // printf("\r\nInternal message pipe\r\n");
+        if(read(InternalMessagePipe.ReadHead, &Result, sizeof(SpecialCharType)) > 0) {
+            // TODO: Allow for the ability to send extra info in this special pipe without using switch-case statement here
+        } else {
+            // TODO: Error
+        }
+    } else if(FileDescriptor == STDIN_FILENO) {
+        // printf("\r\nstdin read\r\n");
+        if(read(STDIN_FILENO, &Result, 1) > 0){
+            // ???
+        } else {
+            // TODO: Error
+        }
+    }
+
+    NumEPollEvents -= 1;
 
     return Result;
 }
@@ -205,12 +252,8 @@ RestoreScreenState() {
 
 internal void
 InitVT100UI() {
-    FD_ZERO(&ReadFileDescriptors);
-    FD_SET(STDIN_FILENO, &ReadFileDescriptors);
-    SetMaxFileDescriptor(STDIN_FILENO);
-
-    // FD_ZERO(&WriteFileDescriptors);
-    // FD_ZERO(&ExceptionalFileDescriptors);
+    EPollFileDescriptor = epoll_create(1); // Argument is ignored
+    RegisterFDForEPollRead(STDIN_FILENO);
 }
 
 

@@ -17,7 +17,7 @@
 #include <fcntl.h>
 #include <termios.h>
 #include <sys/ioctl.h>
-#include <sys/select.h>
+#include <sys/epoll.h>
 #include <signal.h>
 // #include <stdarg.h>
 
@@ -50,7 +50,7 @@
  */
 
 // This will make the program take up the whole screen and restore the contents on exit
-#define RunAsApp 1
+#define RunAsApp 0
 
 static char const Prompt[] = "> ";
 int main() {
@@ -63,7 +63,8 @@ int main() {
     bool IsRunning = false;
 
     EnableRawMode();
-    SetResizeSignal();
+    EnableMouseTracking();
+    StartResizeHandling();
 
 #if RunAsApp
     SaveScreenState();
@@ -184,6 +185,12 @@ int main() {
                                     write(STDOUT_FILENO, MoveLeft, ArrayLength(MoveLeft));
                                 }
                             }
+                        } else {
+                            printf("\r\nUnknown escape sequence: ");
+                            while(read(STDIN_FILENO, &Char, 1) != 0) {
+                                printf("%c", Char);
+                            }
+                            printf("\r\n");
                         }
                     } else if (Char == 127) {
                         // Backspace
