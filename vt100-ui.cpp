@@ -35,14 +35,30 @@ global int EPollFileDescriptor;
 global struct epoll_event EPollEventBuffer[16];
 global int NumEPollEvents;
 global int EPollBufferIndex;
+global int NumRegisteredEPollFDs;
 
 internal void
 RegisterFDForEPollRead(int FileDescriptor) {
-    struct epoll_event EventData = {};
-    EventData.events = EPOLLIN;
-    EventData.data.fd = FileDescriptor;
+    if(NumRegisteredEPollFDs < ArrayLength(EPollEventBuffer)) {
+        struct epoll_event EventData = {};
+        EventData.events = EPOLLIN;
+        EventData.data.fd = FileDescriptor;
 
-    epoll_ctl(EPollFileDescriptor, EPOLL_CTL_ADD, FileDescriptor, &EventData);
+        epoll_ctl(EPollFileDescriptor, EPOLL_CTL_ADD, FileDescriptor, &EventData);
+        NumRegisteredEPollFDs += 1;
+    }
+}
+
+internal void
+UnRegisterFDForEPollRead(int FileDescriptor) {
+    // Assumes FileDescriptor is registered since there is no way to check
+    if(NumRegisteredEPollFDs >= 0) {
+        struct epoll_event EventData = {};
+        EventData.data.fd = FileDescriptor;
+
+        epoll_ctl(EPollFileDescriptor, EPOLL_CTL_DEL, FileDescriptor, &EventData);
+        NumRegisteredEPollFDs -= 1;
+    }
 }
 
 internal int
