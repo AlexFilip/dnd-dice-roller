@@ -5,47 +5,27 @@
    Notice: (C) Copyright 2021 by Alexandru Filip. All rights reserved.
    */
 
-internal b32
-IsNewLine(char Char) {
-    b32 Result = ((Char == '\n') || (Char == '\r'));
-    return Result;
-}
-
-internal b32
-IsWhitespace(char Char) {
-    b32 Result = ((Char == ' ') ||
-                  (Char == '\t') ||
-                  (Char == '\f') ||
-                  IsNewLine(Char));
-    return Result;
-}
-
-internal b32
-IsLetter(char Char) {
-    b32 Result = IsUpper(Char) || IsLower(Char);
-    return Result;
-}
-
-internal b32
-IsNumber(char Char) {
-    b32 Result = IsDigit(Char);
-    return Result;
-}
-
-internal int
+internal int_size
 CStringLength(char* CString) {
-    int Result = 0;
+    int_size Result = 0;
     while(*CString++) {
         Result++;
     }
     return Result;
 }
 
-internal int
-StringToIntUnchecked(string String) {
-    int Result = 0;
+internal void
+ClearBytes(void* Bytes, int_size Length) {
+    for(int_size Index = 0; Index < Length; ++Index) {
+        ((uint8_t*)Bytes)[Index] = 0;
+    }
+}
 
-    for(int Index = 0; Index < String.Length; ++Index) {
+internal int_size
+StringToIntUnchecked(string String) {
+    int_size Result = 0;
+
+    for(int_size Index = 0; Index < String.Length; ++Index) {
         Result = Result * 10 + (String.Contents[Index] - '0');
     }
 
@@ -53,7 +33,7 @@ StringToIntUnchecked(string String) {
 }
 
 internal void*
-AllocateOnHeap(int Size) {
+AllocateOnHeap(int_size Size) {
     // printf("Allocating %d on heap\n", Size);
     void* Result = malloc(Size);
     return Result;
@@ -61,7 +41,7 @@ AllocateOnHeap(int Size) {
 
 #ifdef __cplusplus
 template<class type> internal type*
-AllocateOnHeapTyped(int Count = 1, int Extra = 0) {
+AllocateOnHeapTyped(int_size Count = 1, int_size Extra = 0) {
     // printf("Allocating %d on heap\n", Size);
     type* Result = (type*)AllocateOnHeap(sizeof(type) * Count + Extra);
     return Result;
@@ -74,7 +54,7 @@ DeallocateHeap(void* Existing) {
 }
 
 internal void*
-ReallocateOnHeap(void* Existing, int Size) {
+ReallocateOnHeap(void* Existing, int_size Size) {
     void* Result = NULL;
     if(Existing != NULL) {
         Result = realloc(Existing, Size);
@@ -86,7 +66,7 @@ ReallocateOnHeap(void* Existing, int Size) {
 
 #ifdef __cplusplus
 template<class element> internal array<element> 
-AllocateArray(int Length) {
+AllocateArray(int_size Length) {
     array<element> Result = {};
 
     Result.Length = Length;
@@ -116,7 +96,7 @@ CopyOnHeap(array<element> Array) {
     Result.Length = Array.Length;
     Result.Contents = AllocateOnHeapTyped<element>(Array.Length);
 
-    for(int Index = 0; Index < Array.Length; ++Index) {
+    for(int_size Index = 0; Index < Array.Length; ++Index) {
         Result.Contents[Index] = Array.Contents[Index];
     }
 
@@ -134,7 +114,7 @@ ArrayOf(type1 Val1, type ... Vals) {
     type1 Args[] = { Val1, static_cast<type1>(Vals)... };
     array<type1> Result = AllocateArray<type1>(sizeof...(type) + 1);
 
-    for(int Index = 0; Index < Result.Length; ++Index) {
+    for(int_size Index = 0; Index < Result.Length; ++Index) {
         Result.Contents[Index] = Args[Index];
     }
 
@@ -180,7 +160,7 @@ ToArray(dynamic_array<element> Array) {
 }
 
 template<class element> internal dynamic_array<element> 
-AllocateDynamicArray(int Capacity) {
+AllocateDynamicArray(int_size Capacity) {
     dynamic_array<element> Result = {};
 
     Result.Capacity = Capacity;
@@ -209,7 +189,7 @@ DynamicArrayOf(type1 Val1, type ... Vals) {
     dynamic_array<type1> Result = AllocateDynamicArray<type1>(ArrayLength(Args));
     Result.Length = Result.Capacity;
 
-    for(int Index = 0; Index < Result.Capacity; ++Index) {
+    for(int_size Index = 0; Index < Result.Capacity; ++Index) {
         Result.At(Index) = Args[Index];
     }
 
@@ -258,7 +238,7 @@ Append(dynamic_array<type>* Array, type Value) {
 template<class type> internal void
 Append(dynamic_array<type>* Array, array<type> Values) {
     Reserve(Array, Array->Length + Values.Length);
-    for(int Index = 0; Index < Values.Length; ++Index, Array->Length++) {
+    for(int_size Index = 0; Index < Values.Length; ++Index, Array->Length++) {
         Array->Contents[Array->Length] = Values.At(Index);
     }
 }
@@ -267,7 +247,7 @@ Append(dynamic_array<type>* Array, array<type> Values) {
 // ---
 
 internal string
-AllocateString(int Length) {
+AllocateString(int_size Length) {
     char* Buffer =  AllocateOnHeapTyped<char>(Length);
     string Result = StringWithLength(Buffer, Length);
     return Result;
@@ -284,7 +264,7 @@ DeallocateString(string* Str) {
 
 internal void
 CopyInto(string String, char* Buffer) {
-    for(int Index = 0; Index < String.Length; ++Index) {
+    for(int_size Index = 0; Index < String.Length; ++Index) {
         Buffer[Index] = String.At(Index);
     }
 }
@@ -299,7 +279,7 @@ CopyOnHeap(string String) {
 }
 
 internal string
-StringFittingSize(int Size, string Existing) {
+StringFittingSize(int_size Size, string Existing) {
     string Result = Existing;
     if(Result.Length < Size) {
         DeallocateString(&Result);
@@ -310,10 +290,10 @@ StringFittingSize(int Size, string Existing) {
 
 internal b32
 StringsEqual(string String1, string String2) {
-    int Result = 0;
+    int_size Result = 0;
     if(String1.Length == String2.Length) {
         Result = 1;
-        for(int Index = 0; Index < String1.Length; ++Index) {
+        for(int_size Index = 0; Index < String1.Length; ++Index) {
             if(String1.At(Index) != String2.At(Index)) {
                 Result = 0;
                 break;
@@ -367,7 +347,7 @@ Identity(type Value) {
 
 // TODO: Remake this so it can be used in C. The only thing you have to replace is KeyFn and element*
 // NOTE: This assumes that all numbers are positive
-template<class element, class key_fn = int(*)(element)> internal void
+template<class element, class key_fn = int_size(*)(element)> internal void
 RadixSort(array<element> Array, array<element> Buffer, key_fn KeyFn = Identity<element>) {
 #define NumRadixBits 4
 #define NumSortKeys  (1 << NumRadixBits)
@@ -375,18 +355,17 @@ RadixSort(array<element> Array, array<element> Buffer, key_fn KeyFn = Identity<e
 
     Assert(Buffer.Length >= Array.Length);
 
-
-    for(int Shift = 0; Shift < sizeof(KeyFn(Array.At(0))) * 8; Shift += NumRadixBits) {
-        int SortKeyCounts[NumSortKeys] = {};
-        for(int Index = 0; Index < Array.Length; ++Index) {
+    for(s32 Shift = 0; Shift < sizeof(KeyFn(Array.At(0))) * 8; Shift += NumRadixBits) {
+        s32 SortKeyCounts[NumSortKeys] = {};
+        for(int_size Index = 0; Index < Array.Length; ++Index) {
             ++SortKeyCounts[(KeyFn(Array.At(Index)) >> Shift) & Mask];
         }
 
-        for(int CountIndex = 1; CountIndex < NumSortKeys; ++CountIndex) {
+        for(int_size CountIndex = 1; CountIndex < NumSortKeys; ++CountIndex) {
             SortKeyCounts[CountIndex] += SortKeyCounts[CountIndex - 1];
         }
 
-        for(int Index = Array.Length - 1; Index >= 0; --Index) {
+        for(int_size Index = Array.Length - 1; Index >= 0; --Index) {
             uint32_t SortKeyIndex = (KeyFn(Array.At(Index)) >> Shift) & Mask;
             uint32_t BufferIndex = --SortKeyCounts[SortKeyIndex];
             Buffer.At(BufferIndex) = Array.At(Index);
@@ -397,10 +376,6 @@ RadixSort(array<element> Array, array<element> Buffer, key_fn KeyFn = Identity<e
         element* Temp = Array.Contents;
         Array.Contents = Buffer.Contents;
         Buffer.Contents = Temp;
-
-        // for(int Index = 0; Index < NumSortKeys; ++Index) {
-        //     SortKeyCounts[Index] = 0;
-        // }
     }
 
 #undef NumSortKeys

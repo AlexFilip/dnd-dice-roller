@@ -22,6 +22,7 @@ typedef uint64_t u64;
 
 typedef u32 b32;
 
+typedef s32 int_size;
 typedef int64_t int_word;
 typedef uint64_t uint_word;
 

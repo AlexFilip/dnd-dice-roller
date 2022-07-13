@@ -8,6 +8,7 @@
 struct dice_set {
     int Count;
     int NumSides;
+    b32 NumSidesKnown;
 };
 
 enum token_type {
@@ -37,7 +38,7 @@ struct tokenizer {
     char* End;
 
     token LastReadToken;
-    bool  LastReadIsValid;
+    b32  LastReadIsValid;
 };
 
 internal token
@@ -79,8 +80,23 @@ GetToken(tokenizer* Tokenizer) {
                 Tokenizer->At += 1;
             } else if(Char == '-') {
                 Tokenizer->At += 1;
+            } else if(Char == '{') {
+                // Open bracket token (for arrays)
+                Tokenizer->At += 1;
+            } else if(Char == '{') {
+                // Close bracket token (for arrays)
+                Tokenizer->At += 1;
+            } else if(Char == ':') {
+                // Colon token (for symbols)
+                Tokenizer->At += 1;
+            } else if (Char == '(') {
+                // Open Paren token (for expressions)
+                Tokenizer->At += 1;
+            } else if (Char == ')') {
+                // Close Paren token (for expressions)
+                Tokenizer->At += 1;
             } else if(IsNumber(Char) || IsLetter(Char)) {
-                bool StartsWithNumber = IsNumber(Char);
+                b32 StartsWithNumber = IsNumber(Char);
                 int StartNumber = 0;
                 while(IsNumber(Tokenizer->At[TokenEndIndex])) {
                     StartNumber *= 10;
@@ -89,7 +105,7 @@ GetToken(tokenizer* Tokenizer) {
                 }
 
                 const int FirstIndexAfterNumber = TokenEndIndex;
-                bool HasLetters = IsLetter(Tokenizer->At[TokenEndIndex]);
+                b32 HasLetters = IsLetter(Tokenizer->At[TokenEndIndex]);
                 for(;;) {
                     if(IsNumber(Char)) {
                         // Nothing
@@ -117,13 +133,13 @@ GetToken(tokenizer* Tokenizer) {
                 } else {
                     string WordStr = StringWithLength(Tokenizer->At, TokenEndIndex);
                     if((Tokenizer->At[FirstIndexAfterNumber] | 0x20) == 'd' /* Case-insensitive comparison */) {
-                        int NumberEndIndex = FirstIndexAfterNumber + 1;
-                        int StartDiceIndex = NumberEndIndex;
-                        while(IsNumber(Tokenizer->At[NumberEndIndex])) {
-                            ++NumberEndIndex;
+                        int EndIndex = FirstIndexAfterNumber + 1;
+                        int StartDiceIndex = EndIndex;
+                        while(IsNumber(Tokenizer->At[EndIndex])) {
+                            ++EndIndex;
                         }
 
-                        if(NumberEndIndex == TokenEndIndex) {
+                        if(EndIndex == TokenEndIndex) {
                             // Only number after 'd'
                             string NumSidesString = StringWithLength(Tokenizer->At + StartDiceIndex, TokenEndIndex - StartDiceIndex);
                             int NumSides = StringToIntUnchecked(NumSidesString);
@@ -143,6 +159,7 @@ GetToken(tokenizer* Tokenizer) {
                                 if(Result.Type == TokenTypeNone) {
                                     Result.Dice.NumSides = NumSides;
                                     Result.Type = TokenTypeDice;
+                                    Result.Dice.NumSidesKnown = true;
                                 }
                             } else {
                                 Result.ErrorMessage = String("Num sides must be greater than zero");

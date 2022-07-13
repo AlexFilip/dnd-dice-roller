@@ -9,7 +9,13 @@
 #define Between(Lower, Value, Upper) (((unsigned)((Value) - (Lower))) <= ((unsigned)((Upper) - (Lower))))
 #define IsUpper(Char) Between('A', Char, 'Z')
 #define IsLower(Char) Between('a', Char, 'z')
+#define IsLetter(Char) (IsUpper(Char) || IsLower(Char))
 #define IsDigit(Char) Between('0', Char, '9')
+#define IsNumber(Char) IsDigit(Char)
+#define IsNewLine(Char) ((Char == '\n') || (Char == '\r'))
+#define IsWhitespace(Char) (Between('\t', Char, '\r') || Char == ' ')
+#define IsPrintable(Char) Between(0x20, Char, 0x7E)
+#define IsControlChar(Char) (!(IsPrintable(Char)))
 
 // ---
 

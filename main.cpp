@@ -5,13 +5,13 @@
   Notice: (C) Copyright 2022 by Alexandru Filip. All rights reserved.
 */
 
-#include <ctype.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <stdint.h>
 #include <stdarg.h>
-#include <string.h>
 #include <time.h>
+// #include <ctype.h>
+
+#include <stdio.h>
+#include <stdlib.h>
 
 #include <unistd.h>
 #include <fcntl.h>
@@ -19,7 +19,6 @@
 #include <sys/ioctl.h>
 #include <sys/epoll.h>
 #include <signal.h>
-// #include <stdarg.h>
 
 #include "common_defs.h"
 #include "basic_types.h"
@@ -53,18 +52,18 @@
 #define RunAsApp 0
 
 static char const Prompt[] = "> ";
-int main() {
+s32 main() {
     char Buffer[100] = {};
     pcg_random_state RandomState = PCGSeed(time(NULL));
     InitVT100UI();
 
-    dynamic_array<string> LineBuffer = {};
-    int LineBufferPosition = 0;
-    bool IsRunning = false;
+    dynamic_array<string> CommandHistory = {};
+    int_size LineBufferPosition = 0;
+    b32 IsRunning = false;
 
     EnableRawMode();
     EnableMouseTracking();
-    StartResizeHandling();
+    // StartResizeHandling();
 
 #if RunAsApp
     SaveScreenState();
@@ -77,20 +76,20 @@ int main() {
         printf(Prompt);
         fflush(stdout);
 
-        int BufferIndex  = 0; // The current position in the buffer
-        int BufferLength = 0; // The total left of the buffer
-        memset(Buffer, 0, ArrayLength(Buffer));
+        int_size BufferIndex  = 0; // The current position in the buffer
+        int_size BufferLength = 0; // The total left of the buffer
+        ClearBytes(Buffer, ArrayLength(Buffer));
         LineBufferPosition = 0;
 
         for(;;) {
-            int Char = ReadChar();
+            s32 Char = ReadChar();
 
-            if(isprint(Char)) {
+            if(IsPrintable(Char)) {
                 WriteChar(Char);
                 if(BufferLength < StringLength(Buffer)) {
                     char NextLetter = (char) Char;
-                    int StartBufferIndex = BufferIndex;
-                    int CurrentIndex = StartBufferIndex;
+                    int_size StartBufferIndex = BufferIndex;
+                    int_size CurrentIndex = StartBufferIndex;
                     while(CurrentIndex < StringLength(Buffer) && NextLetter != 0) {
                         char temp = Buffer[CurrentIndex];
                         Buffer[CurrentIndex] = NextLetter;
@@ -102,7 +101,7 @@ int main() {
                     ++BufferIndex;
                     ++BufferLength;
 
-                    int NumCharsLeft = BufferLength - BufferIndex;
+                    int_size NumCharsLeft = BufferLength - BufferIndex;
                     write(STDOUT_FILENO, &Buffer[BufferIndex], NumCharsLeft);
                     MoveCursorByX(-NumCharsLeft);
                 }
@@ -114,11 +113,11 @@ int main() {
                         printf("\r\n");
 
                         string HeapString = CopyOnHeap(StringFromC(Buffer));
-                        Append(&LineBuffer, HeapString);
+                        Append(&CommandHistory, HeapString);
 
                         break;
                     }
-                } else if(iscntrl(Char)) {
+                } else if(IsControlChar(Char)) {
                     if(Char == 0x1b) {
                         // Escape
                         Char = ReadChar();
@@ -126,41 +125,39 @@ int main() {
                             // Arrow keys and maybe other control characters
                             Char = ReadChar();
                             if(Char == 'A') {
-                                // printf("[Up]");
-                                if(LineBufferPosition >= 0 && LineBufferPosition < LineBuffer.Length) {
+                                if(LineBufferPosition >= 0 && LineBufferPosition < CommandHistory.Length) {
                                     if(LineBufferPosition == 0) {
                                         // line currently being typed
                                     }
 
                                     ++LineBufferPosition;
-                                    string PrevString = LineBuffer.At(LineBuffer.Length - LineBufferPosition);
+                                    string PrevString = CommandHistory.At(CommandHistory.Length - LineBufferPosition);
                                     CopyInto(PrevString, Buffer);
 
-                                    int StartBufferIndex = BufferIndex;
+                                    int_size StartBufferIndex = BufferIndex;
                                     Buffer[PrevString.Length] = '\0';
                                     BufferIndex = PrevString.Length;
                                     BufferLength = PrevString.Length;
 
                                     // redraw line
-                                    // A little inefficient but I'll find a better way later
                                     MoveCursorByX(-StartBufferIndex);
                                     ClearToEndOfLine();
                                     write(STDOUT_FILENO, Buffer, BufferIndex);
                                 }
                             } else if(Char == 'B') {
-                                if(LineBufferPosition >= 0 && LineBufferPosition <= LineBuffer.Length) {
+                                if(LineBufferPosition >= 0 && LineBufferPosition <= CommandHistory.Length) {
                                     string NextString = {};
 
                                     if(LineBufferPosition == 0) {
                                         // TODO: Copy working line into buffer
                                     } else {
                                         --LineBufferPosition;
-                                        NextString = LineBuffer.At(LineBuffer.Length - LineBufferPosition);
+                                        NextString = CommandHistory.At(CommandHistory.Length - LineBufferPosition);
                                     }
 
                                     CopyInto(NextString, Buffer);
 
-                                    int StartBufferIndex = BufferIndex;
+                                    int_size StartBufferIndex = BufferIndex;
                                     Buffer[NextString.Length] = '\0';
                                     BufferIndex  = NextString.Length;
                                     BufferLength = NextString.Length;
@@ -192,13 +189,33 @@ int main() {
                             }
                             printf("\r\n");
                         }
+                    } else if(Char >= 0 && Char <= 26) {
+                        // Ctrl-Space (0) and Ctrl-{A through Z} not including J (line-feed) and M (carriage-return)
+                        // char KeyName[] = "space";
+                        // if(Char != 0) {
+                        //     KeyName[0] = Char + 'a' - 1;
+                        //     KeyName[1] = 0;
+                        // }
+                        // printf("\r\nCtrl-%s\r\n", KeyName);
+                        if(Char == 3) {
+                            // Ctrl-C
+                            MoveCursorByX(-BufferIndex);
+                            BufferIndex = 0;
+                            BufferLength = 0;
+                            ClearToEndOfLine();
+                            Buffer[BufferIndex] = 0;
+                        } else if(Char == 4) {
+                            if(BufferLength == 0) {
+                                exit(0);
+                            }
+                        }
                     } else if (Char == 127) {
                         // Backspace
                         if(BufferIndex > 0) {
                             MoveCursorByX(-1);
                             --BufferIndex;
 
-                            for(int Index = BufferIndex; Index < BufferLength; ++Index) {
+                            for(int_size Index = BufferIndex; Index < BufferLength; ++Index) {
                                 Buffer[Index] = Buffer[Index + 1];
                             }
 
@@ -209,21 +226,6 @@ int main() {
                             ClearToEndOfLine();
                             MoveCursorByX(BufferIndex - BufferLength);
                         }
-                    } else if(Char == 3) {
-                        // Ctrl-C
-                        MoveCursorByX(-BufferIndex);
-                        BufferIndex = 0;
-                        BufferLength = 0;
-                        ClearToEndOfLine();
-                        Buffer[BufferIndex] = 0;
-                    } else if(Char >= 0 && Char <= 26) {
-                        // Ctrl-Space (0) and Ctrl-{A through Z} not including C (handled above), J (line-feed) and M (carriage-return)
-                        // char KeyName[] = "space";
-                        // if(Char != 0) {
-                        //     KeyName[0] = Char + 'a' - 1;
-                        //     KeyName[1] = 0;
-                        // }
-                        // printf("\r\nCtrl-%s\r\n", KeyName);
                     } else {
                         printf("\r\nOther control char [%d]\r\n", Char);
                     }
@@ -238,19 +240,23 @@ int main() {
         Tokenizer.End = Buffer + BufferLength;
         *(Tokenizer.End) = '\0';
 
-        bool IsReading = true;
+        b32 IsReading = true;
         while(IsReading) {
+            // TODO: Replace with
+            //   - Read line (expression)
+            //   - Evaluate line (new expression or value structs)
+
             token CurrentToken = GetToken(&Tokenizer);
 
             if(CurrentToken.Type == TokenTypeEndOfStream) {
                 IsReading = false;
             } else if(CurrentToken.Type == TokenTypeDice) {
-                int Total = 0;
-                int Max = 0;
-                int Min = 0x7FFFFFFF;
+                s32 Total = 0;
+                s32 Max   = 0;
+                s32 Min   = 0x7FFFFFFF;
 
-                for(int Index = 0; Index < CurrentToken.Dice.Count; ++Index) {
-                    int Num = NextRandom(&RandomState) % CurrentToken.Dice.NumSides + 1;
+                for(int_size Index = 0; Index < CurrentToken.Dice.Count; ++Index) {
+                    s32 Num = NextRandom(&RandomState) % CurrentToken.Dice.NumSides + 1;
 
                     printf("%d  ", Num);
                     Total += Num;

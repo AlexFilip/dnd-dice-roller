@@ -5,34 +5,35 @@
   Notice: (C) Copyright 2022 by Alexandru Filip. All rights reserved.
 */
 struct vector2_i {
-    int X, Y;
+    s32 X, Y;
 };
 
-
-enum SpecialCharType : int {
+enum SpecialCharType : s32 {
     WindowResized = 256
 };
 
-global union {
-    int Pipe[2];
+union pipe {
+    s32 Pipe[2];
     struct {
-        int ReadHead;
-        int WriteHead;
+        s32 ReadHead;
+        s32 WriteHead;
     };
-} InternalMessagePipe; // TODO: Rename
-global bool SpecialReadPipeExists;
+};
+
+global union pipe InternalMessagePipe;
+global b32 SpecialReadPipeExists;
 
 global struct termios   OriginalTermIOs;
 global struct sigaction OldResizeAction;
 
-global int EPollFileDescriptor;
+global s32 EPollFileDescriptor;
 global struct epoll_event EPollEventBuffer[16];
-global int NumEPollEvents;
-global int EPollBufferIndex;
-global int NumRegisteredEPollFDs;
+global s32 NumEPollEvents;
+global s32 EPollBufferIndex;
+global s32 NumRegisteredEPollFDs;
 
 internal void
-RegisterFDForEPollRead(int FileDescriptor) {
+RegisterFDForEPollRead(s32 FileDescriptor) {
     if(NumRegisteredEPollFDs < ArrayLength(EPollEventBuffer)) {
         struct epoll_event EventData = {};
         EventData.events = EPOLLIN;
@@ -44,7 +45,7 @@ RegisterFDForEPollRead(int FileDescriptor) {
 }
 
 internal void
-UnRegisterFDForEPollRead(int FileDescriptor) {
+UnRegisterFDForEPollRead(s32 FileDescriptor) {
     // Assumes FileDescriptor is registered since there is no way to check
     if(NumRegisteredEPollFDs >= 0) {
         struct epoll_event EventData = {};
@@ -55,9 +56,9 @@ UnRegisterFDForEPollRead(int FileDescriptor) {
     }
 }
 
-internal int
+internal s32
 NextEPollFD() {
-    int Result = 0;
+    s32 Result = 0;
     struct epoll_event EventData = EPollEventBuffer[EPollBufferIndex];
 
     EPollBufferIndex++;
@@ -83,6 +84,7 @@ EnableRawMode() {
     raw.c_oflag &= ~(OPOST);
     raw.c_cflag |= (CS8);
     raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
+
     // Timeout for read
     raw.c_cc[VMIN] = 0;
     raw.c_cc[VTIME] = 1;
@@ -112,9 +114,30 @@ GetWindowSize() {
 }
 
 internal void
-ResizeSignalHandler(int Signal) {
-    int Value = WindowResized;
+ResizeSignalHandler(s32 Signal) {
+    s32 Value = WindowResized;
     write(InternalMessagePipe.WriteHead, &Value, sizeof(Value));
+}
+
+internal union pipe
+CreatePipe(b32 Blocking = false) {
+    union pipe Result = {};
+
+    // TODO: Look into O_DIRECT for "packet mode"
+    s32 Flags = 0;
+    if(!Blocking) {
+        Flags |= O_NONBLOCK;
+    }
+    pipe2(Result.Pipe, Flags);
+    SpecialReadPipeExists = true;
+
+    return Result;
+}
+
+internal void
+DestroyPipe(union pipe Pipe) {
+    close(Pipe.ReadHead);
+    close(Pipe.WriteHead);
 }
 
 internal void
@@ -126,7 +149,7 @@ StartResizeHandling() {
 
     if(!SpecialReadPipeExists) {
         // uninitialized
-        pipe2(InternalMessagePipe.Pipe, O_NONBLOCK);
+        InternalMessagePipe = CreatePipe();
         SpecialReadPipeExists = true;
     }
 
@@ -149,9 +172,9 @@ WriteChar(char C) {
     write(STDOUT_FILENO, &C, 1);
 }
 
-internal int
+internal s32
 ReadChar() {
-    int Result = 0;
+    s32 Result = 0;
     if(NumEPollEvents <= 0) {
         // TODO: Replace select() with poll() or epoll()
 
@@ -162,7 +185,7 @@ ReadChar() {
         EPollBufferIndex = 0;
     }
 
-    int FileDescriptor = NextEPollFD();
+    s32 FileDescriptor = NextEPollFD();
     if(SpecialReadPipeExists && FileDescriptor == InternalMessagePipe.ReadHead) {
         // printf("\r\nInternal message pipe\r\n");
         if(read(InternalMessagePipe.ReadHead, &Result, sizeof(SpecialCharType)) > 0) {
@@ -199,7 +222,7 @@ internal void
 MoveCursorTo(vector2_i Position) {
     char Buffer[32] = {};
     snprintf(Buffer, sizeof(Buffer), "\x1b[%d;%df", Position.Y, Position.X);
-    write(STDOUT_FILENO, Buffer, strlen(Buffer));
+    write(STDOUT_FILENO, Buffer, CStringLength(Buffer));
 }
 
 internal void
@@ -209,7 +232,7 @@ MoveCursorToTop() {
 }
 
 internal void
-MoveCursorByAmountInDirection(int NumPositions, char ForwardChar, char BackwardChar) {
+MoveCursorByAmountInDirection(s32 NumPositions, char ForwardChar, char BackwardChar) {
     if(NumPositions != 0) {
         char Char = ForwardChar;
         if(NumPositions < 0) {
@@ -219,18 +242,18 @@ MoveCursorByAmountInDirection(int NumPositions, char ForwardChar, char BackwardC
         char Buffer[32] = {};
         snprintf(Buffer, sizeof(Buffer) - 1, "\x1b[%d%c", NumPositions, Char);
 
-        int StringLength = strlen(Buffer);
+        s32 StringLength = CStringLength(Buffer);
         write(STDOUT_FILENO, Buffer, StringLength);
     }
 }
 
 internal void
-MoveCursorByX(int NumPositions) {
+MoveCursorByX(s32 NumPositions) {
     MoveCursorByAmountInDirection(NumPositions, 'C', 'D');
 }
 
 internal void
-MoveCursorByY(int NumPositions) {
+MoveCursorByY(s32 NumPositions) {
     MoveCursorByAmountInDirection(NumPositions, 'B', 'A');
 }
 
