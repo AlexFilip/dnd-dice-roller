@@ -12,15 +12,12 @@ enum SpecialCharType : s32 {
     WindowResized = 256
 };
 
-union pipe {
-    s32 Pipe[2];
-    struct {
-        s32 ReadHead;
-        s32 WriteHead;
-    };
+struct pipe_fds {
+    s32 ReadHead;
+    s32 WriteHead;
 };
 
-global union pipe InternalMessagePipe;
+global pipe_fds InternalMessagePipe;
 global b32 SpecialReadPipeExists;
 
 global struct termios   OriginalTermIOs;
@@ -119,23 +116,28 @@ ResizeSignalHandler(s32 Signal) {
     write(InternalMessagePipe.WriteHead, &Value, sizeof(Value));
 }
 
-internal union pipe
+internal pipe_fds
 CreatePipe(b32 Blocking = false) {
-    union pipe Result = {};
+
+    union {
+        s32 Pipe[2];
+        pipe_fds FileDescriptors;
+    } Result = {};
 
     // TODO: Look into O_DIRECT for "packet mode"
     s32 Flags = 0;
     if(!Blocking) {
         Flags |= O_NONBLOCK;
     }
+
     pipe2(Result.Pipe, Flags);
     SpecialReadPipeExists = true;
 
-    return Result;
+    return Result.FileDescriptors;
 }
 
 internal void
-DestroyPipe(union pipe Pipe) {
+DestroyPipe(pipe_fds Pipe) {
     close(Pipe.ReadHead);
     close(Pipe.WriteHead);
 }
