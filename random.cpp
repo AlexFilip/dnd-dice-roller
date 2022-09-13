@@ -7,7 +7,7 @@
 #include "random.h"
 
 #ifdef USE_STANDARD_C_RNG
-standard_c_random_state StandardCRNGSeed(unsigned s32 Seed) {
+standard_c_random_state StandardCRNGSeed(u32 Seed) {
     srand(Seed);
     standard_c_random_state Result = {};
     return Result;

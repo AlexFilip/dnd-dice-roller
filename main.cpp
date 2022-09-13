@@ -26,6 +26,8 @@
 #include "common_operations.cpp"
 #include "vt100-ui.cpp"
 #include "dice-cmd.cpp"
+
+#define USE_STANDARD_C_RNG
 #include "random.cpp"
 
 /*
@@ -54,7 +56,7 @@
 static char const Prompt[] = "> ";
 s32 main() {
     char Buffer[100] = {};
-    pcg_random_state RandomState = PCGSeed(time(NULL));
+    standard_c_random_state RandomState = StandardCRNGSeed((u32) time(NULL));
     InitVT100UI();
 
     dynamic_array<string> CommandHistory = {};

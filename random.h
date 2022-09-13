@@ -20,7 +20,7 @@ struct standard_c_random_state {
     // NOTHING
 };
 
-standard_c_random_state StandardCRNGSeed(unsigned s32 Seed);
+standard_c_random_state StandardCRNGSeed(s32 Seed);
 s32 NextRandom(standard_c_random_state* Unused);
 #endif
 
