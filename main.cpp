@@ -199,17 +199,25 @@ s32 main() {
                         //     KeyName[1] = 0;
                         // }
                         // printf("\r\nCtrl-%s\r\n", KeyName);
-                        if(Char == 3) {
+                        if(Char == ('C' - 'A' + 1)) {
                             // Ctrl-C
                             MoveCursorByX(-BufferIndex);
                             BufferIndex = 0;
                             BufferLength = 0;
                             ClearToEndOfLine();
                             Buffer[BufferIndex] = 0;
-                        } else if(Char == 4) {
+                        } else if(Char == ('D' - 'A' + 1)) {
                             if(BufferLength == 0) {
                                 exit(0);
                             }
+                        } else if(Char == ('L' - 'A' + 1)) {
+                            ClearScreen();
+                            MoveCursorToTop();
+
+                            printf("%s%.*s", Prompt, BufferLength, Buffer);
+                            fflush(stdout);
+
+                            MoveCursorByX(BufferIndex - BufferLength);
                         }
                     } else if (Char == 127) {
                         // Backspace

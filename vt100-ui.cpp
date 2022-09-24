@@ -118,7 +118,6 @@ ResizeSignalHandler(s32 Signal) {
 
 internal pipe_fds
 CreatePipe(b32 Blocking = false) {
-
     union {
         s32 Pipe[2];
         pipe_fds FileDescriptors;
