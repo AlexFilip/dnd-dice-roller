@@ -92,10 +92,10 @@ EnableRawMode() {
 internal void
 EnableMouseTracking() {
     char MouseTracking[] = "\x1b[1000h";
-    write(STDOUT_FILENO, MouseTracking, sizeof(MouseTracking));
+    write(STDOUT_FILENO, MouseTracking, sizeof(MouseTracking) - 1);
 
     char DecimalMouseTracking[] = "\x1b[1006h";
-    write(STDOUT_FILENO, DecimalMouseTracking, sizeof(DecimalMouseTracking));
+    write(STDOUT_FILENO, DecimalMouseTracking, sizeof(DecimalMouseTracking) - 1);
 }
 
 internal vector2_i
@@ -205,13 +205,13 @@ ReadChar() {
 internal void
 ClearToEndOfLine() {
     char ClearCommand[] = "\x1b[0K";
-    write(STDOUT_FILENO, ClearCommand, sizeof(ClearCommand));
+    write(STDOUT_FILENO, ClearCommand, sizeof(ClearCommand) - 1);
 }
 
 internal void
 ClearScreen() {
     char ClearCommand[] = "\x1b[2J";
-    write(STDOUT_FILENO, ClearCommand, sizeof(ClearCommand));
+    write(STDOUT_FILENO, ClearCommand, sizeof(ClearCommand) - 1);
 }
 
 internal void
@@ -224,7 +224,7 @@ MoveCursorTo(vector2_i Position) {
 internal void
 MoveCursorToTop() {
     char Buffer[] = "\x1b[1;1f";
-    write(STDOUT_FILENO, Buffer, ArrayLength(Buffer) - 1);
+    write(STDOUT_FILENO, Buffer, sizeof(Buffer) - 1);
 }
 
 internal void
@@ -236,7 +236,7 @@ MoveCursorByAmountInDirection(s32 NumPositions, char ForwardChar, char BackwardC
             NumPositions = -NumPositions;
         }
         char Buffer[32] = {};
-        snprintf(Buffer, sizeof(Buffer) - 1, "\x1b[%d%c", NumPositions, Char);
+        snprintf(Buffer, sizeof(Buffer), "\x1b[%d%c", NumPositions, Char);
 
         s32 StringLength = CStringLength(Buffer);
         write(STDOUT_FILENO, Buffer, StringLength);
