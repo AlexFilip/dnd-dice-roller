@@ -18,7 +18,7 @@ struct pipe_fds {
 };
 
 global pipe_fds InternalMessagePipe;
-global b32 SpecialReadPipeExists;
+global b32 InternalMessagePipeExists;
 
 global struct termios   OriginalTermIOs;
 global struct sigaction OldResizeAction;
@@ -130,7 +130,7 @@ CreatePipe(b32 Blocking = false) {
     }
 
     pipe2(Result.Pipe, Flags);
-    SpecialReadPipeExists = true;
+    InternalMessagePipeExists = true;
 
     return Result.FileDescriptors;
 }
@@ -148,10 +148,10 @@ StartResizeHandling() {
 
     sigaction(SIGWINCH, &Action, &OldResizeAction);
 
-    if(!SpecialReadPipeExists) {
+    if(!InternalMessagePipeExists) {
         // uninitialized
         InternalMessagePipe = CreatePipe();
-        SpecialReadPipeExists = true;
+        InternalMessagePipeExists = true;
     }
 
     RegisterFDForEPollRead(InternalMessagePipe.ReadHead);
@@ -177,17 +177,12 @@ internal s32
 ReadChar() {
     s32 Result = 0;
     if(NumEPollEvents <= 0) {
-        // TODO: Replace select() with poll() or epoll()
-
-        // NOTE: When resizing, this function gets unblocked, not by writing
-        // to InternalMessagePipe, but by SIGWINCH triggering its signal handler.
-        // select(MaxFileDescriptor + 1, &ReadFileDescriptors, NULL, NULL, NULL);
         NumEPollEvents = epoll_wait(EPollFileDescriptor, EPollEventBuffer, ArrayLength(EPollEventBuffer), -1);
         EPollBufferIndex = 0;
     }
 
     s32 FileDescriptor = NextEPollFD();
-    if(SpecialReadPipeExists && FileDescriptor == InternalMessagePipe.ReadHead) {
+    if(InternalMessagePipeExists && FileDescriptor == InternalMessagePipe.ReadHead) {
         // printf("\r\nInternal message pipe\r\n");
         if(read(InternalMessagePipe.ReadHead, &Result, sizeof(SpecialCharType)) > 0) {
             // TODO: Allow for the ability to send extra info in this special pipe without using switch-case statement here
