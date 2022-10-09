@@ -4,24 +4,20 @@
   Creator: Alexandru Filip
   Notice: (C) Copyright 2022 by Alexandru Filip. All rights reserved.
 */
-struct vector2_i {
-    s32 X, Y;
-};
 
-enum SpecialCharType : s32 {
-    WindowResized = 256
-};
+// TODO: The functions below have nothing to do with vt100 and should be factored out into their own file
 
 struct pipe_fds {
     s32 ReadHead;
     s32 WriteHead;
 };
 
+enum SpecialCharType : s32 {
+    WindowResized = 256
+};
+
 global pipe_fds InternalMessagePipe;
 global b32 InternalMessagePipeExists;
-
-global struct termios   OriginalTermIOs;
-global struct sigaction OldResizeAction;
 
 global s32 EPollFileDescriptor;
 global struct epoll_event EPollEventBuffer[16];
@@ -67,6 +63,80 @@ NextEPollFD() {
 }
 
 internal void
+DebugPrint(char const* Format, ...) {
+    // Print at a predictable location
+}
+
+internal void
+WriteChar(char C) {
+    write(STDOUT_FILENO, &C, 1);
+}
+
+internal s32
+ReadChar() {
+    s32 Result = 0;
+    if(NumEPollEvents <= 0) {
+        NumEPollEvents = epoll_wait(EPollFileDescriptor, EPollEventBuffer, ArrayLength(EPollEventBuffer), -1);
+        EPollBufferIndex = 0;
+    }
+
+    s32 FileDescriptor = NextEPollFD();
+    if(InternalMessagePipeExists && FileDescriptor == InternalMessagePipe.ReadHead) {
+        // printf("\r\nInternal message pipe\r\n");
+        if(read(InternalMessagePipe.ReadHead, &Result, sizeof(SpecialCharType)) > 0) {
+            // TODO: Allow for the ability to send extra info in this special pipe without using switch-case statement here
+        } else {
+            // TODO: Error
+        }
+    } else if(FileDescriptor == STDIN_FILENO) {
+        // printf("\r\nstdin read\r\n");
+        if(read(STDIN_FILENO, &Result, 1) > 0){
+            // ???
+        } else {
+            // TODO: Error
+        }
+    }
+
+
+    return Result;
+}
+
+internal pipe_fds
+CreatePipe(b32 Blocking = false) {
+    union {
+        s32 Pipe[2];
+        pipe_fds FileDescriptors;
+    } Result = {};
+
+    // TODO: Look into O_DIRECT for "packet mode"
+    s32 Flags = 0;
+    if(!Blocking) {
+        Flags |= O_NONBLOCK;
+    }
+
+    pipe2(Result.Pipe, Flags);
+    InternalMessagePipeExists = true;
+
+    return Result.FileDescriptors;
+}
+
+internal void
+DestroyPipe(pipe_fds Pipe) {
+    close(Pipe.ReadHead);
+    close(Pipe.WriteHead);
+}
+
+// NOTE: Below are the functions that interact with vt100. The only thing
+// they rely on from the code above is the global InternalMessagePipe variable.
+
+struct vector2_i {
+    s32 X, Y;
+};
+
+global struct termios   OriginalTermIOs;
+global struct sigaction OldResizeAction;
+
+internal void
 DisableRawMode() {
     tcsetattr(STDIN_FILENO, TCSAFLUSH, &OriginalTermIOs);
 }
@@ -110,35 +180,19 @@ GetWindowSize() {
     return Result;
 }
 
+internal b32
+IsTerminal(s32 FileDescriptor) {
+    // Attempt to perform a non-mutating operation that can only be
+    // performed on terminals. If it fails, then you are not on a terminal.
+    struct termios TermResult = {};
+    b32 Result = (tcgetattr(FileDescriptor, &TermResult) == 0);
+    return Result;
+}
+
 internal void
 ResizeSignalHandler(s32 Signal) {
     s32 Value = WindowResized;
     write(InternalMessagePipe.WriteHead, &Value, sizeof(Value));
-}
-
-internal pipe_fds
-CreatePipe(b32 Blocking = false) {
-    union {
-        s32 Pipe[2];
-        pipe_fds FileDescriptors;
-    } Result = {};
-
-    // TODO: Look into O_DIRECT for "packet mode"
-    s32 Flags = 0;
-    if(!Blocking) {
-        Flags |= O_NONBLOCK;
-    }
-
-    pipe2(Result.Pipe, Flags);
-    InternalMessagePipeExists = true;
-
-    return Result.FileDescriptors;
-}
-
-internal void
-DestroyPipe(pipe_fds Pipe) {
-    close(Pipe.ReadHead);
-    close(Pipe.WriteHead);
 }
 
 internal void
@@ -166,40 +220,6 @@ StartResizeHandling() {
     // sigaddset(&SignalSet, SIGWINCH);
 
     // sigprocmask(SIG_BLOCK, &SignalSet, NULL);
-}
-
-internal void
-WriteChar(char C) {
-    write(STDOUT_FILENO, &C, 1);
-}
-
-internal s32
-ReadChar() {
-    s32 Result = 0;
-    if(NumEPollEvents <= 0) {
-        NumEPollEvents = epoll_wait(EPollFileDescriptor, EPollEventBuffer, ArrayLength(EPollEventBuffer), -1);
-        EPollBufferIndex = 0;
-    }
-
-    s32 FileDescriptor = NextEPollFD();
-    if(InternalMessagePipeExists && FileDescriptor == InternalMessagePipe.ReadHead) {
-        // printf("\r\nInternal message pipe\r\n");
-        if(read(InternalMessagePipe.ReadHead, &Result, sizeof(SpecialCharType)) > 0) {
-            // TODO: Allow for the ability to send extra info in this special pipe without using switch-case statement here
-        } else {
-            // TODO: Error
-        }
-    } else if(FileDescriptor == STDIN_FILENO) {
-        // printf("\r\nstdin read\r\n");
-        if(read(STDIN_FILENO, &Result, 1) > 0){
-            // ???
-        } else {
-            // TODO: Error
-        }
-    }
-
-
-    return Result;
 }
 
 internal void
@@ -286,10 +306,3 @@ InitVT100UI() {
     EPollFileDescriptor = epoll_create(1); // Argument is ignored
     RegisterFDForEPollRead(STDIN_FILENO);
 }
-
-
-internal void
-DebugPrint(char const* Format, ...) {
-    // Print at a predictable location
-}
-

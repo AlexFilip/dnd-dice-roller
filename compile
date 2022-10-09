@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 if ! [[ -d build ]]; then
     mkdir build
@@ -6,6 +6,23 @@ fi
 
 FILENAME=main
 OUTPUT_NAME=dice
-# FILENAME=template
 
-clang++ -g --std=c++17 $FILENAME.cpp -o build/$OUTPUT_NAME && build/$OUTPUT_NAME
+MODE="DEBUG"
+
+FLAGS="--std=c++17"
+
+if [[ "$MODE" == "DEBUG" ]]; then
+    # -g = add debug information for debugger
+    FLAGS="$FLAGS -g"
+elif [[ "$MODE" == "RELEASE" ]]; then
+    # -O2 = Optimize
+    # -s = strip all debug symbols
+    FLAGS="$FLAGS -O2 -s"
+else
+    echo "Unrecognized mode: \"$MODE\""
+    exit 1
+fi
+
+clang++ ${FLAGS} \
+    $FILENAME.cpp \
+    -o build/$OUTPUT_NAME && build/$OUTPUT_NAME
